@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../theme/tile_themes.dart';
 import '../widgets/sub_page_header.dart';
 import '../widgets/tile_editor_sheet.dart';
+import '../widgets/tile_glyph.dart';
 
 /// Full-screen board manager, pushed from Settings.
 ///
@@ -29,6 +30,7 @@ class BoardEditorPage extends StatelessWidget {
         ttsPhrase: draft.ttsPhrase,
         icon: draft.icon,
         colorTheme: draft.colorTheme,
+        imageUrl: draft.imageUrl,
       );
     }
 
@@ -84,6 +86,7 @@ class _TileRow extends StatelessWidget {
       ttsPhrase: draft.ttsPhrase,
       icon: draft.icon,
       colorTheme: draft.colorTheme,
+      imageUrl: draft.imageUrl,
     );
   }
 
@@ -133,11 +136,19 @@ class _TileRow extends StatelessWidget {
             Container(
               width: 48,
               height: 48,
+              padding: EdgeInsets.all(tile.imageUrl != null ? 6 : 0),
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.14),
+                color: tile.imageUrl != null
+                    ? Colors.white
+                    : accent.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(13),
               ),
-              child: Icon(tile.icon, color: accent, size: 24),
+              child: TileGlyph(
+                imageUrl: tile.imageUrl,
+                icon: tile.icon,
+                iconSize: 24,
+                color: accent,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

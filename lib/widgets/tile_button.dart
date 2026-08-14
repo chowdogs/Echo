@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/comm_tile.dart';
 import '../theme/app_theme.dart';
 import '../theme/tile_themes.dart';
+import 'tile_glyph.dart';
 
 /// A single communication tile.
 ///
@@ -91,13 +92,21 @@ class _TileButtonState extends State<TileButton> {
                         Container(
                           width: chip,
                           height: chip,
+                          padding: EdgeInsets.all(
+                            widget.tile.imageUrl != null ? chip * 0.12 : 0,
+                          ),
                           decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.14),
+                            // A pictogram reads truest on white; an icon sits
+                            // on its faint category tint.
+                            color: widget.tile.imageUrl != null
+                                ? Colors.white
+                                : accent.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(chip * 0.3),
                           ),
-                          child: Icon(
-                            widget.tile.icon,
-                            size: chip * 0.52,
+                          child: TileGlyph(
+                            imageUrl: widget.tile.imageUrl,
+                            icon: widget.tile.icon,
+                            iconSize: chip * 0.52,
                             color: accent,
                           ),
                         ),

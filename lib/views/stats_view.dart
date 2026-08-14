@@ -6,6 +6,7 @@ import '../state/tile_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tile_themes.dart';
 import '../widgets/sub_page_header.dart';
+import '../widgets/tile_glyph.dart';
 
 /// Placeholder weekly series. Wired to real data once utterances persist
 /// across sessions; the shape here matches what that query will return.
@@ -186,14 +187,18 @@ class _MostUsedCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
+                padding: EdgeInsets.all(tile?.imageUrl != null ? 5 : 0),
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.14),
+                  color: tile?.imageUrl != null
+                      ? Colors.white
+                      : accent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  tile?.icon ?? Icons.remove_rounded,
+                child: TileGlyph(
+                  imageUrl: tile?.imageUrl,
+                  icon: tile?.icon ?? Icons.remove_rounded,
                   color: accent,
-                  size: 22,
+                  iconSize: 22,
                 ),
               ),
               const SizedBox(width: 10),
