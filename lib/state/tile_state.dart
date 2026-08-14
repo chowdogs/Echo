@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/comm_tile.dart';
+import '../services/board_storage.dart';
 
 /// The nine starter tiles.
 ///
@@ -91,12 +94,42 @@ enum EchoTab { speak, emergency, settings }
 /// App-wide state. The Flutter counterpart of the React context this app was
 /// first prototyped with.
 class TileState extends ChangeNotifier {
+  TileState({BoardStorage? storage}) : _storage = storage ?? BoardStorage() {
+    _load();
+  }
+
+  final BoardStorage _storage;
+
   List<CommTile> _tiles = List<CommTile>.of(kInitialTiles);
   EchoTab _activeTab = EchoTab.speak;
   final List<Utterance> _utterances = <Utterance>[];
 
   // Light is the default, per request; the Settings toggle flips this.
   ThemeMode _themeMode = ThemeMode.light;
+
+  /// Loads the saved board and theme from local storage at startup. Until this
+  /// completes the app shows the built-in defaults; if saved data exists it
+  /// replaces them and notifies listeners so the UI updates.
+  Future<void> _load() async {
+    final List<CommTile>? saved = await _storage.loadTiles();
+    final bool? dark = await _storage.loadDarkMode();
+
+    var changed = false;
+    if (saved != null && saved.isNotEmpty) {
+      _tiles = saved;
+      changed = true;
+    }
+    if (dark != null) {
+      _themeMode = dark ? ThemeMode.dark : ThemeMode.light;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  /// Fire-and-forget save of the current board to local storage.
+  void _persist() {
+    unawaited(_storage.saveTiles(_tiles));
+  }
 
   List<CommTile> get tiles => List<CommTile>.unmodifiable(_tiles);
   EchoTab get activeTab => _activeTab;
@@ -109,11 +142,13 @@ class TileState extends ChangeNotifier {
     final ThemeMode next = value ? ThemeMode.dark : ThemeMode.light;
     if (_themeMode == next) return;
     _themeMode = next;
+    unawaited(_storage.saveDarkMode(value));
     notifyListeners();
   }
 
   set tiles(List<CommTile> value) {
     _tiles = List<CommTile>.of(value);
+    _persist();
     notifyListeners();
   }
 
@@ -124,10 +159,11 @@ class TileState extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Board editing
+  // Board editing (CRUD)
   //
-  // Tiles live only in memory for now (see the persistence note in the editor
-  // page). Every mutation replaces the list so listeners rebuild predictably.
+  // Every mutation replaces the list so listeners rebuild predictably, then
+  // calls _persist() to save the board to local storage — so changes survive
+  // an app restart.
   // ---------------------------------------------------------------------------
 
   int _idCounter = 0;
@@ -143,6 +179,7 @@ class TileState extends ChangeNotifier {
     required String ttsPhrase,
     required IconData icon,
     required String colorTheme,
+    String? imageUrl,
   }) {
     final CommTile tile = CommTile(
       id: _newId(),
@@ -150,8 +187,10 @@ class TileState extends ChangeNotifier {
       ttsPhrase: ttsPhrase,
       icon: icon,
       colorTheme: colorTheme,
+      imageUrl: imageUrl,
     );
     _tiles = <CommTile>[..._tiles, tile];
+    _persist();
     notifyListeners();
     return tile;
   }
@@ -162,6 +201,9 @@ class TileState extends ChangeNotifier {
     String? ttsPhrase,
     IconData? icon,
     String? colorTheme,
+    // Defaults to the sentinel so an omitted argument leaves the pictogram
+    // untouched; pass null explicitly to clear it back to the icon.
+    Object? imageUrl = CommTile.keep,
   }) {
     _tiles = <CommTile>[
       for (final CommTile t in _tiles)
@@ -171,15 +213,18 @@ class TileState extends ChangeNotifier {
             ttsPhrase: ttsPhrase,
             icon: icon,
             colorTheme: colorTheme,
+            imageUrl: imageUrl,
           )
         else
           t,
     ];
+    _persist();
     notifyListeners();
   }
 
   void removeTile(String id) {
     _tiles = _tiles.where((CommTile t) => t.id != id).toList();
+    _persist();
     notifyListeners();
   }
 
