@@ -70,11 +70,17 @@ void main() {
 
   test('Pictogram builds a 300px image URL from its id', () {
     const Pictogram p = Pictogram(id: 2248, keyword: 'water');
-    expect(p.imageUrl, 'https://static.arasaac.org/pictograms/2248/2248_300.png');
+    expect(
+      p.imageUrl,
+      'https://static.arasaac.org/pictograms/2248/2248_300.png',
+    );
   });
 
   test('Pictogram.fromJson tolerates a missing id', () {
-    expect(Pictogram.fromJson(<String, dynamic>{'keywords': <dynamic>[]}), isNull);
+    expect(
+      Pictogram.fromJson(<String, dynamic>{'keywords': <dynamic>[]}),
+      isNull,
+    );
     final Pictogram? p = Pictogram.fromJson(
       jsonDecode('{"_id": 7, "keywords": [{"keyword": "eat"}]}')
           as Map<String, dynamic>,

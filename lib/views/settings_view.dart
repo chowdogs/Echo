@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../state/auth_controller.dart';
 import '../state/tile_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/section_intro.dart';
@@ -29,6 +30,13 @@ class _SettingsViewState extends State<SettingsView> {
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
     final bool isDark = context.select<TileState, bool>((s) => s.isDarkMode);
+    // Null in test/offline mode (no auth backend); non-null in the real app.
+    AuthController? auth;
+    try {
+      auth = context.watch<AuthController>();
+    } on ProviderNotFoundException {
+      auth = null;
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -38,6 +46,26 @@ class _SettingsViewState extends State<SettingsView> {
           subtitle: 'Tune how Echo speaks and looks',
         ),
         const SizedBox(height: 20),
+        if (auth != null && auth.isLoggedIn) ...<Widget>[
+          _Group(
+            title: 'Account',
+            children: <Widget>[
+              _InfoRow(
+                icon: Icons.person_outline_rounded,
+                label: 'Signed in as',
+                value: auth.session?.email ?? '',
+              ),
+              const _Divider(),
+              _NavRow(
+                icon: Icons.logout_rounded,
+                label: 'Log out',
+                subtitle: 'Sign out of your account on this device',
+                onTap: () => auth!.logout(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
         _Group(
           title: 'Appearance',
           children: <Widget>[

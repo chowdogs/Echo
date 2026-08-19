@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/comm_tile.dart';
 import '../services/board_storage.dart';
+import '../services/firebase_board_service.dart';
 
 /// The nine starter tiles.
 ///
@@ -94,11 +95,17 @@ enum EchoTab { speak, emergency, settings }
 /// App-wide state. The Flutter counterpart of the React context this app was
 /// first prototyped with.
 class TileState extends ChangeNotifier {
-  TileState({BoardStorage? storage}) : _storage = storage ?? BoardStorage() {
+  TileState({BoardStorage? storage, FirebaseBoardService? firebase})
+    : _storage = storage ?? BoardStorage(),
+      _firebase = firebase {
     _load();
   }
 
   final BoardStorage _storage;
+
+  /// Optional cloud backend (Firebase Realtime Database). When null — as in
+  /// tests — the app runs purely on local storage and makes no network calls.
+  final FirebaseBoardService? _firebase;
 
   List<CommTile> _tiles = List<CommTile>.of(kInitialTiles);
   EchoTab _activeTab = EchoTab.speak;
@@ -107,9 +114,9 @@ class TileState extends ChangeNotifier {
   // Light is the default, per request; the Settings toggle flips this.
   ThemeMode _themeMode = ThemeMode.light;
 
-  /// Loads the saved board and theme from local storage at startup. Until this
-  /// completes the app shows the built-in defaults; if saved data exists it
-  /// replaces them and notifies listeners so the UI updates.
+  /// Loads the board and theme from local storage at startup (instant and
+  /// offline-safe). The per-account cloud board is loaded separately by
+  /// [loadForUser] once the user signs in.
   Future<void> _load() async {
     final List<CommTile>? saved = await _storage.loadTiles();
     final bool? dark = await _storage.loadDarkMode();
@@ -126,9 +133,46 @@ class TileState extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
+  /// Loads the signed-in user's board from Firebase. Call this after login,
+  /// once the board service has the user's auth. If the account has no board
+  /// yet, the current defaults are seeded up so the database shows data.
+  Future<void> loadForUser() async {
+    final FirebaseBoardService? firebase = _firebase;
+    if (firebase == null || !firebase.hasAuth) return;
+    try {
+      final List<CommTile> cloud = await firebase.fetchTiles();
+      if (cloud.isNotEmpty) {
+        _tiles = cloud;
+      } else {
+        // New account — seed it with the default board.
+        _tiles = List<CommTile>.of(kInitialTiles);
+        unawaited(firebase.putBoard(_tiles).catchError((Object _) {}));
+      }
+      unawaited(_storage.saveTiles(_tiles));
+      notifyListeners();
+    } catch (_) {
+      // Offline or unreachable — keep whatever is loaded locally.
+    }
+  }
+
+  /// Resets the board to the built-in defaults (used on logout) and clears the
+  /// local cache so the next account starts clean.
+  void resetToDefaults() {
+    _tiles = List<CommTile>.of(kInitialTiles);
+    unawaited(_storage.saveTiles(_tiles));
+    notifyListeners();
+  }
+
   /// Fire-and-forget save of the current board to local storage.
   void _persist() {
     unawaited(_storage.saveTiles(_tiles));
+  }
+
+  /// Runs a cloud write in the background, swallowing errors so a failed sync
+  /// never breaks the UI (the change is already saved locally).
+  void _cloud(Future<void>? Function() op) {
+    final Future<void>? future = op();
+    if (future != null) unawaited(future.catchError((Object _) {}));
   }
 
   List<CommTile> get tiles => List<CommTile>.unmodifiable(_tiles);
@@ -191,6 +235,7 @@ class TileState extends ChangeNotifier {
     );
     _tiles = <CommTile>[..._tiles, tile];
     _persist();
+    _cloud(() => _firebase?.putTile(tile)); // CREATE — HTTP PUT
     notifyListeners();
     return tile;
   }
@@ -219,12 +264,20 @@ class TileState extends ChangeNotifier {
           t,
     ];
     _persist();
+    // UPDATE — HTTP PATCH the changed tile.
+    for (final CommTile t in _tiles) {
+      if (t.id == id) {
+        _cloud(() => _firebase?.patchTile(t));
+        break;
+      }
+    }
     notifyListeners();
   }
 
   void removeTile(String id) {
     _tiles = _tiles.where((CommTile t) => t.id != id).toList();
     _persist();
+    _cloud(() => _firebase?.deleteTile(id)); // DELETE — HTTP DELETE
     notifyListeners();
   }
 
@@ -238,6 +291,8 @@ class TileState extends ChangeNotifier {
     _utterances.add(
       Utterance(tileId: tile.id, label: tile.label, spokenAt: DateTime.now()),
     );
+    // LOG — HTTP POST an event to the usage log (Firebase generates the key).
+    _cloud(() => _firebase?.logSpoken(tile.id, tile.label));
     notifyListeners();
   }
 

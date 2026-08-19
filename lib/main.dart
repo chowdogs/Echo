@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'services/board_storage.dart';
+import 'services/firebase_auth_service.dart';
+import 'services/firebase_board_service.dart';
+import 'state/auth_controller.dart';
 import 'state/tile_state.dart';
 import 'theme/app_theme.dart';
+import 'views/auth_view.dart';
 import 'views/emergency_view.dart';
 import 'views/landing_view.dart';
 import 'views/settings_view.dart';
@@ -10,19 +15,66 @@ import 'views/speak_view.dart';
 import 'widgets/app_header.dart';
 import 'widgets/bottom_nav.dart';
 
+/// Firebase Realtime Database endpoint for the cloud board (REST API).
+const String kFirebaseUrl =
+    'https://echo-df114-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+/// Firebase Web API Key (Project settings → General → Web API Key).
+/// Used only for the Authentication REST API.
+const String kFirebaseApiKey = 'AIzaSyCasSFXSBiWw3IzIr04-UnUqaZ3x9mETBw';
+
 void main() {
-  runApp(const EchoApp());
+  runApp(
+    EchoApp(
+      firebase: FirebaseBoardService(baseUrl: kFirebaseUrl),
+      authService: FirebaseAuthService(apiKey: kFirebaseApiKey),
+    ),
+  );
 }
 
 class EchoApp extends StatelessWidget {
-  const EchoApp({super.key});
+  const EchoApp({super.key, this.firebase, this.authService});
+
+  /// Optional cloud backend + auth. main() supplies the real ones; widget
+  /// tests use `const EchoApp()` (both null) so they never touch the network
+  /// and skip the login gate.
+  final FirebaseBoardService? firebase;
+  final FirebaseAuthService? authService;
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<TileState>(
-      create: (_) => TileState(),
-      // Rebuild MaterialApp when the theme mode changes so the whole tree
-      // re-themes. `select` keeps this to theme changes only.
+    // No auth backend (tests / offline preview): original flow, no login gate.
+    if (authService == null) {
+      return ChangeNotifierProvider<TileState>(
+        create: (_) => TileState(firebase: firebase),
+        child: Consumer<TileState>(
+          builder: (BuildContext context, TileState state, Widget? child) {
+            return MaterialApp(
+              title: 'Echo',
+              debugShowCheckedModeBanner: false,
+              theme: buildEchoTheme(kLightColors, Brightness.light),
+              darkTheme: buildEchoTheme(kDarkColors, Brightness.dark),
+              themeMode: state.themeMode,
+              home: child,
+            );
+          },
+          child: const EchoRoot(),
+        ),
+      );
+    }
+
+    // Real app: provide auth + board, and gate the UI behind login.
+    final BoardStorage storage = BoardStorage();
+    return MultiProvider(
+      providers: <ChangeNotifierProvider<ChangeNotifier>>[
+        ChangeNotifierProvider<AuthController>(
+          create: (_) =>
+              AuthController(auth: authService!, storage: storage)..init(),
+        ),
+        ChangeNotifierProvider<TileState>(
+          create: (_) => TileState(firebase: firebase, storage: storage),
+        ),
+      ],
       child: Consumer<TileState>(
         builder: (BuildContext context, TileState state, Widget? child) {
           return MaterialApp(
@@ -34,8 +86,86 @@ class EchoApp extends StatelessWidget {
             home: child,
           );
         },
-        child: const EchoRoot(),
+        child: _AuthGate(firebase: firebase),
       ),
+    );
+  }
+}
+
+/// Chooses what to show based on sign-in state, and keeps the board service's
+/// auth + the loaded board in step with the current user.
+class _AuthGate extends StatefulWidget {
+  const _AuthGate({this.firebase});
+
+  final FirebaseBoardService? firebase;
+
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> {
+  String? _appliedUid;
+
+  void _sync(AuthController auth) {
+    final FirebaseBoardService? firebase = widget.firebase;
+    final TileState tiles = context.read<TileState>();
+
+    if (auth.isLoggedIn) {
+      final session = auth.session!;
+      firebase?.setAuth(session.uid, session.idToken);
+      if (_appliedUid != session.uid) {
+        _appliedUid = session.uid;
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => tiles.loadForUser(),
+        );
+      }
+    } else if (_appliedUid != null) {
+      _appliedUid = null;
+      firebase?.clearAuth();
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => tiles.resetToDefaults(),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AuthController auth = context.watch<AuthController>();
+    final EchoColors c = EchoColors.of(context);
+    _sync(auth);
+
+    return switch (auth.status) {
+      AuthStatus.unknown => Scaffold(
+        backgroundColor: c.background,
+        body: Center(child: CircularProgressIndicator(color: c.accent)),
+      ),
+      AuthStatus.loggedOut => const _UnauthedFlow(),
+      AuthStatus.loggedIn => const MainShell(),
+    };
+  }
+}
+
+/// Landing screen → "Get Started" → login/register.
+class _UnauthedFlow extends StatefulWidget {
+  const _UnauthedFlow();
+
+  @override
+  State<_UnauthedFlow> createState() => _UnauthedFlowState();
+}
+
+class _UnauthedFlowState extends State<_UnauthedFlow> {
+  bool _showAuth = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      child: _showAuth
+          ? const AuthView(key: ValueKey<String>('auth'))
+          : LandingView(
+              key: const ValueKey<String>('landing'),
+              onStart: () => setState(() => _showAuth = true),
+            ),
     );
   }
 }

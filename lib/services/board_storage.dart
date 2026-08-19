@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/auth_session.dart';
 import '../models/comm_tile.dart';
 
 /// Persists the board (and the theme choice) to the device's local storage
@@ -15,6 +16,7 @@ import '../models/comm_tile.dart';
 class BoardStorage {
   static const String _tilesKey = 'echo.board.tiles.v1';
   static const String _themeKey = 'echo.settings.darkMode.v1';
+  static const String _sessionKey = 'echo.auth.session.v1';
 
   /// Writes the whole board as a JSON string.
   Future<void> saveTiles(List<CommTile> tiles) async {
@@ -48,6 +50,37 @@ class BoardStorage {
       return tiles.isEmpty ? null : tiles;
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<void> saveSession(AuthSession session) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<AuthSession?> loadSession() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? raw = prefs.getString(_sessionKey);
+      if (raw == null) return null;
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      return AuthSession.fromJson(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearSession() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_sessionKey);
+    } catch (_) {
+      // ignore
     }
   }
 
