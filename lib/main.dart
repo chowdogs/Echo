@@ -24,6 +24,17 @@ const String kFirebaseUrl =
 /// Used only for the Authentication REST API.
 const String kFirebaseApiKey = 'AIzaSyCasSFXSBiWw3IzIr04-UnUqaZ3x9mETBw';
 
+/// ElevenLabs API key. Supplied at build time so the secret never lives in
+/// source control:  flutter run --dart-define=ELEVENLABS_API_KEY=sk_...
+/// (the run-echo.ps1 helper does this for you). When empty — e.g. a fresh
+/// clone with no key — Echo falls back to the device's built-in TTS engine.
+const String kElevenLabsApiKey = String.fromEnvironment('ELEVENLABS_API_KEY');
+
+/// ElevenLabs voice id to speak with. "Sarah" — a clear default voice that the
+/// free tier can use via the API (older library voices like Rachel are blocked
+/// on free accounts).
+const String kElevenLabsVoiceId = 'EXAVITQu4vr4xnSDxMaL';
+
 void main() {
   // Required before constructing plugins (flutter_tts) that open a platform
   // channel during initialization.
@@ -32,7 +43,10 @@ void main() {
     EchoApp(
       firebase: FirebaseBoardService(baseUrl: kFirebaseUrl),
       authService: FirebaseAuthService(apiKey: kFirebaseApiKey),
-      tts: TtsService(),
+      tts: TtsService(
+        elevenLabsApiKey: kElevenLabsApiKey,
+        voiceId: kElevenLabsVoiceId,
+      ),
     ),
   );
 }

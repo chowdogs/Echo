@@ -21,6 +21,11 @@ migrate_working_dir/
 # Claude Code local config
 .claude/
 
+# Local secrets — never commit API keys
+run-echo.ps1
+lib/secrets.dart
+.env
+
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
