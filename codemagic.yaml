@@ -24,12 +24,12 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
-      - name: Generate iOS build config (injects the ElevenLabs key)
-        script: flutter build ios --release --config-only --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
+      - name: Generate iOS config, no signing (injects the ElevenLabs key)
+        script: flutter build ios --release --config-only --no-codesign --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
       - name: Install CocoaPods
         script: cd ios && pod install
       - name: Build unsigned app (code signing disabled)
-        script: xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -derivedDataPath build/ios_output CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ENABLE_BITCODE=NO build
+        script: xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -derivedDataPath build/ios_output CODE_SIGN_IDENTITY="" CODE_SIGN_ENTITLEMENTS="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ENABLE_BITCODE=NO build
       - name: Package unsigned .ipa for Sideloadly
         script: |
           APP=$(find build/ios_output/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
