@@ -1,0 +1,42 @@
+# Codemagic CI build for Echo.
+#
+# Builds an UNSIGNED iOS .ipa you can install on your iPhone with Sideloadly.
+# The ElevenLabs API key is NOT in this file — it is read from an encrypted
+# environment variable you add in the Codemagic dashboard (see below), so the
+# secret never lives in the repository.
+#
+# ── Where to put the API key (one-time setup) ─────────────────────────────
+#   1. codemagic.io → open this app → "Environment variables" tab
+#   2. Add a variable:
+#        name:   ELEVENLABS_API_KEY
+#        value:  sk_...   (your real ElevenLabs key)
+#        group:  echo_secrets
+#      and tick "Secure" so it is encrypted.
+#   3. Start the "ios-sideload" workflow. Download the Echo.ipa artifact and
+#      sideload it with Sideloadly.
+# ──────────────────────────────────────────────────────────────────────────
+
+workflows:
+  ios-sideload:
+    name: Echo iOS (unsigned, for Sideloadly)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      groups:
+        - echo_secrets        # must contain ELEVENLABS_API_KEY (added in the UI)
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build unsigned iOS app
+        script: |
+          flutter build ios --release --no-codesign \
+            --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
+      - name: Package unsigned .ipa for Sideloadly
+        script: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r Echo.ipa Payload
+    artifacts:
+      - build/ios/iphoneos/Echo.ipa
