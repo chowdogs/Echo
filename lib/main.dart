@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'services/board_storage.dart';
 import 'services/firebase_auth_service.dart';
 import 'services/firebase_board_service.dart';
+import 'services/tts_service.dart';
 import 'state/auth_controller.dart';
 import 'state/tile_state.dart';
 import 'theme/app_theme.dart';
@@ -28,25 +29,27 @@ void main() {
     EchoApp(
       firebase: FirebaseBoardService(baseUrl: kFirebaseUrl),
       authService: FirebaseAuthService(apiKey: kFirebaseApiKey),
+      tts: TtsService(),
     ),
   );
 }
 
 class EchoApp extends StatelessWidget {
-  const EchoApp({super.key, this.firebase, this.authService});
+  const EchoApp({super.key, this.firebase, this.authService, this.tts});
 
-  /// Optional cloud backend + auth. main() supplies the real ones; widget
-  /// tests use `const EchoApp()` (both null) so they never touch the network
-  /// and skip the login gate.
+  /// Optional cloud backend + auth + speech. main() supplies the real ones;
+  /// widget tests use `const EchoApp()` (all null) so they never touch the
+  /// network, the TTS plugin, or the login gate.
   final FirebaseBoardService? firebase;
   final FirebaseAuthService? authService;
+  final TtsService? tts;
 
   @override
   Widget build(BuildContext context) {
     // No auth backend (tests / offline preview): original flow, no login gate.
     if (authService == null) {
       return ChangeNotifierProvider<TileState>(
-        create: (_) => TileState(firebase: firebase),
+        create: (_) => TileState(firebase: firebase, tts: tts),
         child: Consumer<TileState>(
           builder: (BuildContext context, TileState state, Widget? child) {
             return MaterialApp(
@@ -72,7 +75,7 @@ class EchoApp extends StatelessWidget {
               AuthController(auth: authService!, storage: storage)..init(),
         ),
         ChangeNotifierProvider<TileState>(
-          create: (_) => TileState(firebase: firebase, storage: storage),
+          create: (_) => TileState(firebase: firebase, storage: storage, tts: tts),
         ),
       ],
       child: Consumer<TileState>(

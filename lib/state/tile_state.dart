@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/comm_tile.dart';
 import '../services/board_storage.dart';
 import '../services/firebase_board_service.dart';
+import '../services/tts_service.dart';
 
 /// The nine starter tiles.
 ///
@@ -95,9 +96,13 @@ enum EchoTab { speak, emergency, settings }
 /// App-wide state. The Flutter counterpart of the React context this app was
 /// first prototyped with.
 class TileState extends ChangeNotifier {
-  TileState({BoardStorage? storage, FirebaseBoardService? firebase})
-    : _storage = storage ?? BoardStorage(),
-      _firebase = firebase {
+  TileState({
+    BoardStorage? storage,
+    FirebaseBoardService? firebase,
+    TtsService? tts,
+  }) : _storage = storage ?? BoardStorage(),
+       _firebase = firebase,
+       _tts = tts {
     _load();
   }
 
@@ -106,6 +111,10 @@ class TileState extends ChangeNotifier {
   /// Optional cloud backend (Firebase Realtime Database). When null — as in
   /// tests — the app runs purely on local storage and makes no network calls.
   final FirebaseBoardService? _firebase;
+
+  /// Optional Text-to-Speech engine. When null — as in tests — the app records
+  /// the utterance but produces no audio (no platform plugin is touched).
+  final TtsService? _tts;
 
   List<CommTile> _tiles = List<CommTile>.of(kInitialTiles);
   EchoTab _activeTab = EchoTab.speak;
@@ -287,6 +296,8 @@ class TileState extends ChangeNotifier {
   /// method — nothing in the widget layer needs to change.
   void speak(CommTile tile) {
     debugPrint('[Echo TTS] Speaking: "${tile.ttsPhrase}"');
+    // Produce real spoken audio through the platform TTS engine (null in tests).
+    _tts?.speak(tile.ttsPhrase);
 
     _utterances.add(
       Utterance(tileId: tile.id, label: tile.label, spokenAt: DateTime.now()),
