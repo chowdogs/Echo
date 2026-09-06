@@ -2,18 +2,14 @@
 #
 # Builds an UNSIGNED iOS .ipa you can install on your iPhone with Sideloadly.
 # The ElevenLabs API key is NOT in this file — it is read from an encrypted
-# environment variable you add in the Codemagic dashboard (see below), so the
-# secret never lives in the repository.
+# environment variable you add in the Codemagic dashboard, so the secret never
+# lives in the repository.
 #
 # ── Where to put the API key (one-time setup) ─────────────────────────────
-#   1. codemagic.io → open this app → "Environment variables" tab
-#   2. Add a variable:
-#        name:   ELEVENLABS_API_KEY
-#        value:  sk_...   (your real ElevenLabs key)
-#        group:  echo_secrets
-#      and tick "Secure" so it is encrypted.
-#   3. Start the "ios-sideload" workflow. Download the Echo.ipa artifact and
-#      sideload it with Sideloadly.
+#   1. codemagic.io → open this app → "Environment variables"
+#   2. Add:  name: ELEVENLABS_API_KEY   value: sk_...   group: echo_secrets
+#      and tick "Secure".
+#   3. Run the "ios-sideload" workflow → download Echo.ipa → sideload it.
 # ──────────────────────────────────────────────────────────────────────────
 
 workflows:
@@ -28,15 +24,18 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
-      - name: Build unsigned iOS app
-        script: |
-          flutter build ios --release --no-codesign \
-            --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
+      - name: Generate iOS build config (injects the ElevenLabs key)
+        script: flutter build ios --release --config-only --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
+      - name: Install CocoaPods
+        script: cd ios && pod install
+      - name: Build unsigned app (code signing disabled)
+        script: xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -derivedDataPath build/ios_output CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ENABLE_BITCODE=NO build
       - name: Package unsigned .ipa for Sideloadly
         script: |
-          cd build/ios/iphoneos
+          APP=$(find build/ios_output/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          echo "Packaging $APP"
           mkdir -p Payload
-          cp -r Runner.app Payload/
+          cp -r "$APP" Payload/
           zip -r Echo.ipa Payload
     artifacts:
-      - build/ios/iphoneos/Echo.ipa
+      - Echo.ipa
