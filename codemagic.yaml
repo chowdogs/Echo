@@ -25,7 +25,7 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate iOS config, no signing (injects the ElevenLabs key)
-        script: flutter build ios --release --config-only --no-codesign --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
+        script: flutter build ios --release --config-only --no-codesign --no-tree-shake-icons --dart-define=ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
       - name: Install CocoaPods
         script: cd ios && pod install
       - name: Build unsigned app (code signing disabled)
