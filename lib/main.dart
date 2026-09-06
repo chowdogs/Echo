@@ -25,6 +25,9 @@ const String kFirebaseUrl =
 const String kFirebaseApiKey = 'AIzaSyCasSFXSBiWw3IzIr04-UnUqaZ3x9mETBw';
 
 void main() {
+  // Required before constructing plugins (flutter_tts) that open a platform
+  // channel during initialization.
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(
     EchoApp(
       firebase: FirebaseBoardService(baseUrl: kFirebaseUrl),
