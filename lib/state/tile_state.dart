@@ -221,30 +221,88 @@ class TileState extends ChangeNotifier {
   //
   // A guardian can edit this board from their own device, so the board cannot
   // be a one-shot load: without this, their changes would not appear until the
-  // patient restarted the app. Polling (rather than a socket) keeps the whole
-  // backend on plain REST, which is what the rest of the app already uses.
+  // patient restarted the app.
+  //
+  // Firebase pushes changes over a REST event-stream, so where the platform
+  // can hold that stream open the board updates as soon as the change lands —
+  // no interval at all. The browser cannot (its HTTP client buffers a response
+  // until it finishes), so web falls back to a short poll instead.
   // ---------------------------------------------------------------------------
 
   Timer? _syncTimer;
+  Timer? _debounce;
+  final List<StreamSubscription<String>> _watches =
+      <StreamSubscription<String>>[];
   DateTime? _lastLocalEdit;
 
-  /// How often the board checks for edits made elsewhere.
-  static const Duration syncInterval = Duration(seconds: 8);
+  /// Poll interval, used only where the event-stream is unavailable.
+  static const Duration syncInterval = Duration(seconds: 2);
+
+  /// A slow safety net that runs alongside the live stream, so a dropped or
+  /// missed push cannot leave the board stale indefinitely.
+  static const Duration _heartbeat = Duration(seconds: 30);
 
   /// A local edit is still travelling to the server for a moment; re-reading
   /// inside this window would briefly resurrect what the user just changed.
-  static const Duration _quietAfterLocalEdit = Duration(seconds: 5);
+  static const Duration _quietAfterLocalEdit = Duration(seconds: 3);
 
   void startCloudSync() {
-    if (_syncTimer != null) return;
     final FirebaseBoardService? firebase = _firebase;
     if (firebase == null) return;
-    _syncTimer = Timer.periodic(syncInterval, (_) => _syncFromCloud());
+    stopCloudSync();
+
+    if (FirebaseBoardService.supportsStreaming) {
+      // Push: the board reacts as fast as the network delivers the event.
+      _openWatch('tiles');
+      _openWatch('settings');
+      _syncTimer = Timer.periodic(_heartbeat, (_) => _syncFromCloud());
+    } else {
+      _syncTimer = Timer.periodic(syncInterval, (_) => _syncFromCloud());
+    }
+  }
+
+  void _openWatch(String path) {
+    final FirebaseBoardService? firebase = _firebase;
+    if (firebase == null || !firebase.hasAuth) return;
+
+    _watches.add(
+      firebase.watch(path).listen(
+        (_) => _scheduleSync(),
+        // A dropped stream is normal on mobile networks; reopen rather than
+        // silently falling back to nothing.
+        onError: (Object _) => _reopenLater(path),
+        onDone: () => _reopenLater(path),
+        cancelOnError: true,
+      ),
+    );
+  }
+
+  void _reopenLater(String path) {
+    if (_syncTimer == null) return; // Sync was stopped deliberately.
+    Timer(const Duration(seconds: 3), () {
+      if (_syncTimer == null) return;
+      _openWatch(path);
+    });
+  }
+
+  /// Two streams can fire for one change; coalesce them into a single read.
+  void _scheduleSync() {
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 150),
+      () => _syncFromCloud(),
+    );
   }
 
   void stopCloudSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
+    _debounce?.cancel();
+    _debounce = null;
+    for (final StreamSubscription<String> sub in _watches) {
+      unawaited(sub.cancel());
+    }
+    _watches.clear();
   }
 
   Future<void> _syncFromCloud() async {

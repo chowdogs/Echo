@@ -499,6 +499,38 @@ class _SetupTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
       children: <Widget>[
+        if (controller.error != null) ...<Widget>[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: c.danger.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: c.danger.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(Icons.error_outline_rounded, size: 19, color: c.danger),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    controller.error!,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: c.danger,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => context.read<ControllerState>().clearError(),
+                  child: Icon(Icons.close_rounded, size: 18, color: c.danger),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         SettingsGroup(
           title: 'Their board layout',
           children: <Widget>[

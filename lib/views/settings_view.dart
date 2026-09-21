@@ -15,10 +15,10 @@ import 'stats_view.dart';
 
 /// The patient's settings.
 ///
-/// Deliberately short. Once a guardian is connected, the setup work — board,
-/// layout, appearance, stats — moves to their console and disappears from
-/// here, because this device exists for tapping tiles, not for configuration.
-/// What stays is only what a patient alone can decide: who controls them.
+/// The patient keeps full control of their own board, always. A guardian is an
+/// extra pair of hands — someone who can do the setup work *instead of* them,
+/// from their own device — not a replacement for it. If the guardian is away
+/// or offline, every control here still works.
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
 
@@ -101,11 +101,17 @@ class _SettingsViewState extends State<SettingsView> {
                   subtitle:
                       'Show a code so they can manage this device '
                       '(${guardians.length} of $kMaxGuardiansPerPatient)',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const PatientQrPage(),
-                    ),
-                  ),
+                  // Refresh on the way back, so a guardian added on the QR
+                  // screen is already listed the moment it closes.
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PatientQrPage(),
+                      ),
+                    );
+                    if (!context.mounted) return;
+                    await context.read<ControllerState>().refreshGuardians();
+                  },
                 )
               else
                 SettingsInfoRow(
@@ -169,8 +175,10 @@ class _SettingsViewState extends State<SettingsView> {
           ],
         ),
 
-        // Setup only appears while nobody else is doing it for them.
-        if (!managed) ...<Widget>[
+        // The patient never loses control of their own board. A guardian is an
+        // extra pair of hands, not a replacement: if the guardian's device is
+        // offline or absent, everything here still works from this device.
+        ...<Widget>[
           const SizedBox(height: 14),
           SettingsGroup(
             title: 'Board',

@@ -7,7 +7,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../models/pairing.dart';
 import '../services/pairing_service.dart';
 import '../state/auth_controller.dart';
-import '../state/controller_state.dart' show kMaxGuardiansPerPatient;
+import '../state/controller_state.dart'
+    show ControllerState, kMaxGuardiansPerPatient;
 import '../theme/app_theme.dart';
 import '../widgets/sub_page_header.dart';
 
@@ -136,6 +137,9 @@ class _PatientQrPageState extends State<PatientQrPage> {
 
       _poll?.cancel();
       if (!mounted) return;
+      // Update the patient's guardian list right away, so it is already
+      // correct behind this screen rather than a page-visit later.
+      unawaited(context.read<ControllerState>().refreshGuardians());
       setState(
         () => _linkedTo = claimedEmail is String && claimedEmail.isNotEmpty
             ? claimedEmail

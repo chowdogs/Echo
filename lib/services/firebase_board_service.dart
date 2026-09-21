@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
 import '../models/comm_tile.dart';
@@ -70,7 +71,9 @@ class FirebaseBoardService {
 
   Uri _uri(String path) {
     final String uid = _targetUid ?? _uid ?? '_';
-    return Uri.parse('$_baseUrl/users/$uid/$path.json').replace(
+    // An empty path addresses the account node itself.
+    final String suffix = path.isEmpty ? '' : '/$path';
+    return Uri.parse('$_baseUrl/users/$uid$suffix.json').replace(
       queryParameters: _idToken != null
           ? <String, String>{'auth': _idToken!}
           : null,
@@ -152,6 +155,40 @@ class FirebaseBoardService {
     });
     log.sort((Utterance a, Utterance b) => a.spokenAt.compareTo(b.spokenAt));
     return log;
+  }
+
+  /// Whether this platform can hold Firebase's event-stream open.
+  ///
+  /// Firebase's REST API *does* push changes, over Server-Sent Events. The
+  /// catch is the client: the browser's HTTP implementation buffers a response
+  /// until it completes, so a stream that never completes delivers nothing.
+  /// Native platforms stream fine, so they get true push and the web falls
+  /// back to a short poll.
+  static bool get supportsStreaming => !kIsWeb;
+
+  /// Emits every time the data under [path] changes.
+  ///
+  /// Each emission only says *that* something changed; the caller re-reads to
+  /// get it. That keeps one parsing path for both push and poll, instead of
+  /// two subtly different ones that could disagree.
+  Stream<String> watch(String path) async* {
+    final http.Request request = http.Request('GET', _uri(path))
+      ..headers['Accept'] = 'text/event-stream';
+
+    final http.StreamedResponse response = await _client.send(request);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw FirebaseBoardException('Live updates failed '
+          '(${response.statusCode}).');
+    }
+
+    await for (final String line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('event:')) continue;
+      final String event = line.substring('event:'.length).trim();
+      // "keep-alive" and "auth_revoked" are not data changes.
+      if (event == 'put' || event == 'patch') yield event;
+    }
   }
 
   /// READ — GET /settings.json. The patient's board layout and appearance.
