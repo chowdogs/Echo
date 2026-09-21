@@ -101,6 +101,10 @@ class CommTile {
 }
 
 /// One recorded utterance. Feeds the caregiver dashboard.
+///
+/// The JSON shape deliberately matches the records written to Firebase under
+/// `/users/{uid}/log`, so the same parser reads both the local cache and the
+/// cloud history.
 class Utterance {
   const Utterance({
     required this.tileId,
@@ -111,4 +115,24 @@ class Utterance {
   final String tileId;
   final String label;
   final DateTime spokenAt;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'tileId': tileId,
+    'label': label,
+    'at': spokenAt.toIso8601String(),
+  };
+
+  /// Rebuilds an utterance from stored JSON, or null if the record is
+  /// malformed — one bad entry must not lose the whole history.
+  static Utterance? fromJson(Map<String, dynamic> json) {
+    final Object? tileId = json['tileId'];
+    final Object? label = json['label'];
+    final Object? at = json['at'];
+    if (tileId is! String || label is! String || at is! String) return null;
+
+    final DateTime? spokenAt = DateTime.tryParse(at);
+    if (spokenAt == null) return null;
+
+    return Utterance(tileId: tileId, label: label, spokenAt: spokenAt);
+  }
 }

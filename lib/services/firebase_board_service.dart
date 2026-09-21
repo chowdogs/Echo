@@ -121,6 +121,26 @@ class FirebaseBoardService {
     return _send(() => _client.post(_uri('log'), body: body));
   }
 
+  /// READ — GET /log.json. Returns the stored usage history, oldest first, so
+  /// the caregiver dashboard can show real numbers across devices.
+  Future<List<Utterance>> fetchLog() async {
+    final http.Response resp = await _send(() => _client.get(_uri('log')));
+    final Object? decoded = jsonDecode(resp.body);
+    if (decoded is! Map) return <Utterance>[];
+
+    final List<Utterance> log = <Utterance>[];
+    decoded.forEach((Object? key, Object? value) {
+      if (value is Map) {
+        final Utterance? entry = Utterance.fromJson(
+          Map<String, dynamic>.from(value),
+        );
+        if (entry != null) log.add(entry);
+      }
+    });
+    log.sort((Utterance a, Utterance b) => a.spokenAt.compareTo(b.spokenAt));
+    return log;
+  }
+
   /// Runs [request], normalising every failure into a [FirebaseBoardException].
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     final http.Response resp;

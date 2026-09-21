@@ -8,23 +8,11 @@ import '../theme/tile_themes.dart';
 import '../widgets/sub_page_header.dart';
 import '../widgets/tile_glyph.dart';
 
-/// Placeholder weekly series. Wired to real data once utterances persist
-/// across sessions; the shape here matches what that query will return.
-const List<({String day, int count})> _weeklyPlaceholder =
-    <({String day, int count})>[
-      (day: 'Mon', count: 18),
-      (day: 'Tue', count: 24),
-      (day: 'Wed', count: 12),
-      (day: 'Thu', count: 31),
-      (day: 'Fri', count: 27),
-      (day: 'Sat', count: 9),
-      (day: 'Sun', count: 15),
-    ];
-
 /// Caregiver dashboard, pushed as a page from Settings → Stats.
 ///
-/// The headline number is live — it counts what the current session actually
-/// spoke. Everything below it is structural placeholder awaiting persistence.
+/// Every figure here is derived from the persisted utterance log, so the page
+/// reflects real usage across sessions and devices rather than just whatever
+/// happened since the app was opened.
 class StatsPage extends StatelessWidget {
   const StatsPage({super.key});
 
@@ -58,23 +46,23 @@ class _StatsBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       children: <Widget>[
-        _HeroStat(count: state.utterances.length),
+        _HeroStat(count: state.spokenToday),
         const SizedBox(height: 12),
         Row(
           children: <Widget>[
             Expanded(child: _MostUsedCard(tile: topTile)),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: _MiniStat(
                 icon: Icons.local_fire_department_rounded,
                 label: 'Day streak',
-                value: '—',
+                value: '${state.dayStreak}',
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        const _WeeklyChart(),
+        _WeeklyChart(series: state.weeklySeries),
         const SizedBox(height: 12),
         _RecentActivity(utterances: state.utterances),
       ],
@@ -283,14 +271,19 @@ class _MiniStat extends StatelessWidget {
 /// are. Values sit directly above each bar rather than behind a tooltip, which
 /// suits a glanceable caregiver summary.
 class _WeeklyChart extends StatelessWidget {
-  const _WeeklyChart();
+  const _WeeklyChart({required this.series});
+
+  final List<({String day, int count})> series;
 
   @override
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
-    final int maxCount = _weeklyPlaceholder
+    final int peak = series
         .map((({String day, int count}) e) => e.count)
         .reduce((int a, int b) => a > b ? a : b);
+    // A quiet week would otherwise divide by zero; a floor of 1 also keeps
+    // empty days rendering as a flat baseline instead of vanishing.
+    final int maxCount = peak == 0 ? 1 : peak;
 
     return _Card(
       child: Column(
@@ -309,7 +302,7 @@ class _WeeklyChart extends StatelessWidget {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  'Sample data',
+                  'Last 7 days',
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
                   style: TextStyle(fontSize: 11, color: c.muted),
@@ -322,7 +315,7 @@ class _WeeklyChart extends StatelessWidget {
             height: 150,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: _weeklyPlaceholder.map((({String day, int count}) e) {
+              children: series.map((({String day, int count}) e) {
                 final bool isPeak = e.count == maxCount;
                 return Expanded(
                   child: Padding(

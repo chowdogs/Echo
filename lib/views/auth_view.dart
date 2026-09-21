@@ -140,6 +140,17 @@ class _AuthViewState extends State<AuthView> {
                     busy: auth.busy,
                     onTap: auth.busy ? null : _submit,
                   ),
+                  if (auth.googleAvailable) ...<Widget>[
+                    const SizedBox(height: 18),
+                    const _OrDivider(),
+                    const SizedBox(height: 18),
+                    _GoogleButton(
+                      onTap: auth.busy
+                          ? null
+                          : () =>
+                                context.read<AuthController>().loginWithGoogle(),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Center(
                     child: GestureDetector(
@@ -168,6 +179,94 @@ class _AuthViewState extends State<AuthView> {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A hairline rule with "or" set into it, separating the two sign-in paths.
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final EchoColors c = EchoColors.of(context);
+    final Widget rule = Expanded(child: Divider(color: c.border, height: 1));
+
+    return Row(
+      children: <Widget>[
+        rule,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text('or', style: TextStyle(fontSize: 12.5, color: c.muted)),
+        ),
+        rule,
+      ],
+    );
+  }
+}
+
+/// Secondary sign-in action, styled as an outlined button so it reads as the
+/// alternative to the gradient primary rather than competing with it.
+class _GoogleButton extends StatelessWidget {
+  const _GoogleButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final EchoColors c = EchoColors.of(context);
+
+    return Semantics(
+      button: true,
+      label: 'Continue with Google',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 54,
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: c.border, width: 1.5),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              // Google's mark drawn as a gradient "G" — keeps the brand
+              // colours without shipping a bitmap asset.
+              ShaderMask(
+                shaderCallback: (Rect bounds) => const LinearGradient(
+                  colors: <Color>[
+                    Color(0xFF4285F4),
+                    Color(0xFFEA4335),
+                    Color(0xFFFBBC05),
+                    Color(0xFF34A853),
+                  ],
+                  stops: <double>[0.0, 0.35, 0.65, 1.0],
+                ).createShader(bounds),
+                child: const Text(
+                  'G',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Continue with Google',
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w600,
+                  color: c.text,
+                ),
+              ),
+            ],
           ),
         ),
       ),

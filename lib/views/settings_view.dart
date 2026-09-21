@@ -10,26 +10,18 @@ import 'stats_view.dart';
 
 /// Settings.
 ///
-/// Appearance is real — the dark-mode switch drives the app theme through
-/// [TileState]. The other controls hold local state so they feel real, but do
-/// not persist yet; each is the seam a real preference store will slot into.
-class SettingsView extends StatefulWidget {
+/// Every control here does something real and is persisted. Anything that
+/// could only be mocked was removed rather than left as a dead switch — a
+/// caregiver has to be able to trust that what they set actually took effect.
+class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
-
-  @override
-  State<SettingsView> createState() => _SettingsViewState();
-}
-
-class _SettingsViewState extends State<SettingsView> {
-  double _speechRate = 0.5;
-  double _pitch = 1.0;
-  bool _largeText = false;
-  bool _reduceMotion = false;
 
   @override
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
-    final bool isDark = context.select<TileState, bool>((s) => s.isDarkMode);
+    final TileState tiles = context.watch<TileState>();
+    final bool isDark = tiles.isDarkMode;
+
     // Null in test/offline mode (no auth backend); non-null in the real app.
     AuthController? auth;
     try {
@@ -80,6 +72,49 @@ class _SettingsViewState extends State<SettingsView> {
         ),
         const SizedBox(height: 14),
         _Group(
+          title: 'Board layout',
+          children: <Widget>[
+            _StepperRow(
+              icon: Icons.view_column_rounded,
+              label: 'Columns',
+              subtitle: 'Tiles across the page',
+              value: tiles.gridColumns,
+              onChanged: (int v) =>
+                  context.read<TileState>().setGrid(columns: v),
+            ),
+            const _Divider(),
+            _StepperRow(
+              icon: Icons.table_rows_rounded,
+              label: 'Rows',
+              subtitle: 'Tiles down the page',
+              value: tiles.gridRows,
+              onChanged: (int v) => context.read<TileState>().setGrid(rows: v),
+            ),
+            const _Divider(),
+            _InfoRow(
+              icon: Icons.grid_view_rounded,
+              label: 'Tiles per page',
+              value: '${tiles.tilesPerPage}',
+            ),
+            const _Divider(),
+            _InfoRow(
+              icon: Icons.auto_stories_rounded,
+              label: 'Pages',
+              value: '${tiles.pageCount}',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Fewer tiles per page means larger, easier targets. Extra tiles '
+            'flow onto more pages you can swipe between.',
+            style: TextStyle(fontSize: 12, height: 1.45, color: c.muted),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _Group(
           title: 'Board',
           children: <Widget>[
             _NavRow(
@@ -110,48 +145,6 @@ class _SettingsViewState extends State<SettingsView> {
         ),
         const SizedBox(height: 14),
         _Group(
-          title: 'Voice',
-          children: <Widget>[
-            _SliderRow(
-              icon: Icons.speed_rounded,
-              label: 'Speech rate',
-              value: _speechRate,
-              onChanged: (double v) => setState(() => _speechRate = v),
-            ),
-            const _Divider(),
-            _SliderRow(
-              icon: Icons.graphic_eq_rounded,
-              label: 'Pitch',
-              value: _pitch,
-              min: 0.5,
-              max: 2.0,
-              onChanged: (double v) => setState(() => _pitch = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        _Group(
-          title: 'Display',
-          children: <Widget>[
-            _SwitchRow(
-              icon: Icons.text_fields_rounded,
-              label: 'Larger tile text',
-              subtitle: 'Increase label size across the board',
-              value: _largeText,
-              onChanged: (bool v) => setState(() => _largeText = v),
-            ),
-            const _Divider(),
-            _SwitchRow(
-              icon: Icons.motion_photos_paused_rounded,
-              label: 'Reduce motion',
-              subtitle: 'Calm the emergency pulse and transitions',
-              value: _reduceMotion,
-              onChanged: (bool v) => setState(() => _reduceMotion = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        _Group(
           title: 'About',
           children: const <Widget>[
             _InfoRow(
@@ -166,14 +159,6 @@ class _SettingsViewState extends State<SettingsView> {
               value: 'Every voice',
             ),
           ],
-        ),
-        const SizedBox(height: 20),
-        Center(
-          child: Text(
-            'Voice and display preferences are not saved yet in this build.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: c.muted),
-          ),
         ),
       ],
     );
@@ -254,61 +239,122 @@ class _RowIcon extends StatelessWidget {
   }
 }
 
-class _SliderRow extends StatelessWidget {
-  const _SliderRow({
+/// A numeric setting adjusted by stepping rather than typing. Both buttons
+/// keep their position and simply dim at the bounds, so the control never
+/// shifts under a finger that is tapping it repeatedly.
+class _StepperRow extends StatelessWidget {
+  const _StepperRow({
     required this.icon,
     required this.label,
+    required this.subtitle,
     required this.value,
     required this.onChanged,
-    this.min = 0.0,
-    this.max = 1.0,
   });
 
   final IconData icon;
   final String label;
-  final double value;
-  final double min;
-  final double max;
-  final ValueChanged<double> onChanged;
+  final String subtitle;
+  final int value;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              _RowIcon(icon),
-              const SizedBox(width: 14),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
+          _RowIcon(icon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 12.5, color: c.muted),
+                ),
+              ],
+            ),
           ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: c.accent,
-              inactiveTrackColor: c.surfaceHigh,
-              thumbColor: c.accent,
-              overlayColor: c.accent.withValues(alpha: 0.15),
-              trackHeight: 4,
+          _StepButton(
+            icon: Icons.remove_rounded,
+            enabled: value > kMinGridAxis,
+            semanticLabel: 'Fewer $label',
+            onTap: () => onChanged(value - 1),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text(
+              '$value',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+              ),
             ),
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              onChanged: onChanged,
-            ),
+          ),
+          _StepButton(
+            icon: Icons.add_rounded,
+            enabled: value < kMaxGridAxis,
+            semanticLabel: 'More $label',
+            onTap: () => onChanged(value + 1),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.icon,
+    required this.enabled,
+    required this.semanticLabel,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final String semanticLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final EchoColors c = EchoColors.of(context);
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticLabel,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: enabled
+                ? c.surfaceHigh
+                : c.surfaceHigh.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: c.border),
+          ),
+          child: Icon(
+            icon,
+            size: 19,
+            color: enabled ? c.accent : c.muted.withValues(alpha: 0.5),
+          ),
+        ),
       ),
     );
   }
@@ -453,7 +499,11 @@ class _InfoRow extends StatelessWidget {
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
             ),
           ),
-          Text(value, style: TextStyle(fontSize: 14, color: c.muted)),
+          Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(fontSize: 14, color: c.muted),
+          ),
         ],
       ),
     );

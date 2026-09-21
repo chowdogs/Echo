@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'services/board_storage.dart';
 import 'services/firebase_auth_service.dart';
 import 'services/firebase_board_service.dart';
+import 'services/google_auth_service.dart';
 import 'services/tts_service.dart';
 import 'state/auth_controller.dart';
 import 'state/tile_state.dart';
@@ -34,6 +35,18 @@ const String kElevenLabsApiKey = String.fromEnvironment('ELEVENLABS_API_KEY');
 /// free tier can use via the API (older library voices like Rachel are blocked
 /// on free accounts).
 const String kElevenLabsVoiceId = 'EXAVITQu4vr4xnSDxMaL';
+
+/// Google OAuth client ids. These are public identifiers, not secrets — they
+/// already ship inside google-services.json and GoogleService-Info.plist.
+///
+/// The *web* client is what Google mints the ID token for, and the only one
+/// Firebase will accept, so it is used on every platform.
+const String kGoogleServerClientId =
+    '214864562283-irti9kpb0lr6pno8k3vjcp2ol911ovo2.apps.googleusercontent.com';
+
+/// The iOS client id from GoogleService-Info.plist (Apple platforms only).
+const String kGoogleIosClientId =
+    '214864562283-9sgdtj2tbl4mmj5hkl63egfb3ulvnuqb.apps.googleusercontent.com';
 
 void main() {
   // Required before constructing plugins (flutter_tts) that open a platform
@@ -88,8 +101,14 @@ class EchoApp extends StatelessWidget {
     return MultiProvider(
       providers: <ChangeNotifierProvider<ChangeNotifier>>[
         ChangeNotifierProvider<AuthController>(
-          create: (_) =>
-              AuthController(auth: authService!, storage: storage)..init(),
+          create: (_) => AuthController(
+            auth: authService!,
+            storage: storage,
+            google: GoogleAuthService(
+              serverClientId: kGoogleServerClientId,
+              iosClientId: kGoogleIosClientId,
+            ),
+          )..init(),
         ),
         ChangeNotifierProvider<TileState>(
           create: (_) => TileState(firebase: firebase, storage: storage, tts: tts),

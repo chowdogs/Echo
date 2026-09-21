@@ -140,6 +140,10 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('Settings'));
       await tester.pumpAndSettle();
+      // Settings is longer than the viewport, so the row may sit below the
+      // fold — scroll it into view the way a caregiver would.
+      await tester.scrollUntilVisible(find.text('Stats'), 120);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Stats'));
       await tester.pumpAndSettle();
 
@@ -213,6 +217,11 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Settings'));
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Edit communication board'),
+        120,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Edit communication board'));
       await tester.pumpAndSettle();
 
@@ -245,6 +254,11 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('Settings'));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Edit communication board'),
+        120,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Edit communication board'));
       await tester.pumpAndSettle();
       expect(find.text('9 tiles'), findsOneWidget);
@@ -268,11 +282,26 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('Settings'));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Stats'), 120);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Stats'));
       await tester.pumpAndSettle();
 
       // The headline stat is live, so one tap must show as one communication.
-      expect(find.text('1'), findsOneWidget);
+      // Scoped to the hero card: now that the streak and the weekly chart are
+      // real too, a bare find.text('1') would match several of them.
+      expect(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('Communications today'),
+                matching: find.byType(Column),
+              )
+              .first,
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('SOS activates only after a full 2-second hold', (

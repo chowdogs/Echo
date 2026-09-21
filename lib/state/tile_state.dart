@@ -93,6 +93,14 @@ const CommTile kEmergencyTile = CommTile(
 /// page pushed from Settings.
 enum EchoTab { speak, emergency, settings }
 
+/// Board layout bounds. Kept deliberately small at both ends: one tile per
+/// page is a legitimate setting for a user with very low motor precision, and
+/// past five per axis the targets stop being dependable to tap.
+const int kMinGridAxis = 1;
+const int kMaxGridAxis = 5;
+const int kDefaultGridColumns = 3;
+const int kDefaultGridRows = 3;
+
 /// App-wide state. The Flutter counterpart of the React context this app was
 /// first prototyped with.
 class TileState extends ChangeNotifier {
@@ -123,12 +131,20 @@ class TileState extends ChangeNotifier {
   // Light is the default, per request; the Settings toggle flips this.
   ThemeMode _themeMode = ThemeMode.light;
 
+  // Board layout: how many tiles fill one page. A caregiver tunes this to the
+  // user's motor precision — fewer tiles means bigger, easier targets — and
+  // the board pages instead of shrinking once the tiles overflow a page.
+  int _gridColumns = kDefaultGridColumns;
+  int _gridRows = kDefaultGridRows;
+
   /// Loads the board and theme from local storage at startup (instant and
   /// offline-safe). The per-account cloud board is loaded separately by
   /// [loadForUser] once the user signs in.
   Future<void> _load() async {
     final List<CommTile>? saved = await _storage.loadTiles();
     final bool? dark = await _storage.loadDarkMode();
+    final ({int columns, int rows})? grid = await _storage.loadGrid();
+    final List<Utterance>? log = await _storage.loadUtterances();
 
     var changed = false;
     if (saved != null && saved.isNotEmpty) {
@@ -137,6 +153,17 @@ class TileState extends ChangeNotifier {
     }
     if (dark != null) {
       _themeMode = dark ? ThemeMode.dark : ThemeMode.light;
+      changed = true;
+    }
+    if (grid != null) {
+      _gridColumns = grid.columns.clamp(kMinGridAxis, kMaxGridAxis);
+      _gridRows = grid.rows.clamp(kMinGridAxis, kMaxGridAxis);
+      changed = true;
+    }
+    if (log != null && log.isNotEmpty) {
+      _utterances
+        ..clear()
+        ..addAll(log);
       changed = true;
     }
     if (changed) notifyListeners();
@@ -162,13 +189,32 @@ class TileState extends ChangeNotifier {
     } catch (_) {
       // Offline or unreachable — keep whatever is loaded locally.
     }
+
+    // The usage history is a separate concern: a failure here must not cost
+    // us the board we just loaded, so it gets its own guard.
+    try {
+      final List<Utterance> cloudLog = await firebase.fetchLog();
+      if (cloudLog.isNotEmpty) {
+        _utterances
+          ..clear()
+          ..addAll(cloudLog);
+        unawaited(_storage.saveUtterances(_utterances));
+        notifyListeners();
+      }
+    } catch (_) {
+      // Keep the locally cached history.
+    }
   }
 
   /// Resets the board to the built-in defaults (used on logout) and clears the
   /// local cache so the next account starts clean.
   void resetToDefaults() {
     _tiles = List<CommTile>.of(kInitialTiles);
+    // The usage history belongs to the account that just signed out, so it is
+    // cleared with the board rather than bleeding into the next user's stats.
+    _utterances.clear();
     unawaited(_storage.saveTiles(_tiles));
+    unawaited(_storage.saveUtterances(_utterances));
     notifyListeners();
   }
 
@@ -190,6 +236,106 @@ class TileState extends ChangeNotifier {
 
   ThemeMode get themeMode => _themeMode;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
+
+  // ---------------------------------------------------------------------------
+  // Board layout
+  // ---------------------------------------------------------------------------
+
+  int get gridColumns => _gridColumns;
+  int get gridRows => _gridRows;
+
+  /// How many tiles fill a single page of the board.
+  int get tilesPerPage => _gridColumns * _gridRows;
+
+  /// Total pages the current board spans. Always at least one, so the Speak
+  /// view has an (empty) page to render before any tiles exist.
+  int get pageCount => _tiles.isEmpty
+      ? 1
+      : ((_tiles.length + tilesPerPage - 1) ~/ tilesPerPage);
+
+  /// The tiles belonging to [page] (zero-based), in board order.
+  List<CommTile> tilesForPage(int page) {
+    final int start = page * tilesPerPage;
+    if (start >= _tiles.length) return const <CommTile>[];
+    final int end = (start + tilesPerPage).clamp(0, _tiles.length);
+    return List<CommTile>.unmodifiable(_tiles.sublist(start, end));
+  }
+
+  /// Sets the board layout. Values outside [kMinGridAxis]..[kMaxGridAxis] are
+  /// clamped rather than rejected, so callers can step freely.
+  void setGrid({int? columns, int? rows}) {
+    final int nextColumns = (columns ?? _gridColumns).clamp(
+      kMinGridAxis,
+      kMaxGridAxis,
+    );
+    final int nextRows = (rows ?? _gridRows).clamp(kMinGridAxis, kMaxGridAxis);
+    if (nextColumns == _gridColumns && nextRows == _gridRows) return;
+
+    _gridColumns = nextColumns;
+    _gridRows = nextRows;
+    unawaited(_storage.saveGrid(_gridColumns, _gridRows));
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Caregiver stats — all derived from the persisted utterance log.
+  // ---------------------------------------------------------------------------
+
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Utterances spoken today. This is the dashboard's headline number, so it
+  /// must mean "today" rather than "this session".
+  int get spokenToday {
+    final DateTime now = DateTime.now();
+    return _utterances
+        .where((Utterance u) => _isSameDay(u.spokenAt, now))
+        .length;
+  }
+
+  /// Consecutive days up to today on which at least one tile was spoken.
+  /// Returns 0 when nothing was spoken today — the streak is already broken.
+  int get dayStreak {
+    if (_utterances.isEmpty) return 0;
+
+    final Set<String> days = _utterances
+        .map(
+          (Utterance u) =>
+              '${u.spokenAt.year}-${u.spokenAt.month}-${u.spokenAt.day}',
+        )
+        .toSet();
+
+    var streak = 0;
+    DateTime cursor = DateTime.now();
+    while (days.contains('${cursor.year}-${cursor.month}-${cursor.day}')) {
+      streak++;
+      cursor = cursor.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  /// The last seven days, oldest first, as (weekday label, count) pairs —
+  /// the series behind the dashboard's bar chart.
+  List<({String day, int count})> get weeklySeries {
+    const List<String> labels = <String>[
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ];
+    final DateTime today = DateTime.now();
+
+    return List<({String day, int count})>.generate(7, (int i) {
+      final DateTime day = today.subtract(Duration(days: 6 - i));
+      final int count = _utterances
+          .where((Utterance u) => _isSameDay(u.spokenAt, day))
+          .length;
+      return (day: labels[day.weekday - 1], count: count);
+    });
+  }
 
   void setDarkMode(bool value) {
     final ThemeMode next = value ? ThemeMode.dark : ThemeMode.light;
@@ -302,6 +448,8 @@ class TileState extends ChangeNotifier {
     _utterances.add(
       Utterance(tileId: tile.id, label: tile.label, spokenAt: DateTime.now()),
     );
+    // Cache the history locally so the caregiver dashboard survives a restart.
+    unawaited(_storage.saveUtterances(_utterances));
     // LOG — HTTP POST an event to the usage log (Firebase generates the key).
     _cloud(() => _firebase?.logSpoken(tile.id, tile.label));
     notifyListeners();

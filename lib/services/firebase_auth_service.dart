@@ -67,6 +67,44 @@ class FirebaseAuthService {
     );
   }
 
+  /// Trades a Google ID token for a Firebase session.
+  ///
+  /// This is the REST equivalent of `signInWithCredential`: Google has already
+  /// proven who the user is, and Identity Toolkit mints (or reuses) the
+  /// matching Firebase account. The resulting [AuthSession] is identical to an
+  /// email/password one, so everything downstream is unchanged.
+  Future<AuthSession> signInWithGoogle(String googleIdToken) async {
+    final Map<String, dynamic> body = await _post(
+      Uri.https(_idBase, '/v1/accounts:signInWithIdp', <String, String>{
+        'key': apiKey,
+      }),
+      <String, dynamic>{
+        'postBody': 'id_token=$googleIdToken&providerId=google.com',
+        // Required by the endpoint, but unused for a native app flow.
+        'requestUri': 'http://localhost',
+        'returnIdpCredential': true,
+        'returnSecureToken': true,
+      },
+    );
+
+    final Object? idToken = body['idToken'];
+    final Object? refreshToken = body['refreshToken'];
+    final Object? uid = body['localId'];
+    final Object? email = body['email'];
+    if (idToken is! String || refreshToken is! String || uid is! String) {
+      throw const AuthException(
+        'Unexpected response from the sign-in service.',
+      );
+    }
+
+    return AuthSession(
+      uid: uid,
+      email: email is String ? email : '',
+      idToken: idToken,
+      refreshToken: refreshToken,
+    );
+  }
+
   /// Exchanges the long-lived refresh token for a fresh [idToken].
   Future<AuthSession> refresh(AuthSession session) async {
     final Map<String, dynamic> body = await _post(
