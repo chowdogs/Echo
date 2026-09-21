@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Required to fetch ARASAAC pictograms from the internet. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Scanning a guardian pairing QR code. The camera is optional: the
+         same code can always be typed in instead. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
         android:label="echo"
         android:name="${applicationName}"

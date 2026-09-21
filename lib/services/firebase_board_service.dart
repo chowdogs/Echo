@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../models/comm_tile.dart';
+import '../models/pairing.dart';
 
 /// A friendly, already-explained failure the caller can surface as-is.
 class FirebaseBoardException implements Exception {
@@ -53,10 +54,22 @@ class FirebaseBoardService {
   void clearAuth() {
     _uid = null;
     _idToken = null;
+    _targetUid = null;
   }
 
+  /// The account whose data this service reads and writes.
+  ///
+  /// Normally that is the signed-in user. A controller (guardian) points it at
+  /// the patient they manage instead: the requests still carry the
+  /// controller's own token, and the security rules authorise them through the
+  /// pairing grant. Passing null returns to the signed-in user's own data.
+  String? _targetUid;
+
+  void setTarget(String? uid) => _targetUid = uid;
+  String? get targetUid => _targetUid;
+
   Uri _uri(String path) {
-    final String uid = _uid ?? '_';
+    final String uid = _targetUid ?? _uid ?? '_';
     return Uri.parse('$_baseUrl/users/$uid/$path.json').replace(
       queryParameters: _idToken != null
           ? <String, String>{'auth': _idToken!}
@@ -139,6 +152,39 @@ class FirebaseBoardService {
     });
     log.sort((Utterance a, Utterance b) => a.spokenAt.compareTo(b.spokenAt));
     return log;
+  }
+
+  /// SOS — POST /sos.json. Raises an emergency event on the patient's record
+  /// for their guardians to pick up. Fired alongside the local alarm, never
+  /// instead of it: the sound on the patient's own device is the primary
+  /// signal, and this is the remote echo of it.
+  Future<void> raiseSos(String label) {
+    final String body = jsonEncode(<String, dynamic>{
+      'at': DateTime.now().toIso8601String(),
+      'label': label,
+    });
+    return _send(() => _client.post(_uri('sos'), body: body));
+  }
+
+  /// READ — GET /sos.json. The targeted account's emergency history, oldest
+  /// first. A guardian polls this to surface new alerts.
+  Future<List<SosEvent>> fetchSos() async {
+    final http.Response resp = await _send(() => _client.get(_uri('sos')));
+    final Object? decoded = jsonDecode(resp.body);
+    if (decoded is! Map) return <SosEvent>[];
+
+    final List<SosEvent> events = <SosEvent>[];
+    decoded.forEach((Object? key, Object? value) {
+      if (key is String && value is Map) {
+        final SosEvent? event = SosEvent.fromJson(
+          key,
+          Map<String, dynamic>.from(value),
+        );
+        if (event != null) events.add(event);
+      }
+    });
+    events.sort((SosEvent a, SosEvent b) => a.at.compareTo(b.at));
+    return events;
   }
 
   /// Runs [request], normalising every failure into a [FirebaseBoardException].

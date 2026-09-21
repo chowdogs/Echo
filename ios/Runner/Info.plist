@@ -56,5 +56,7 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Echo uses the camera to scan a patient pairing code. You can also type the code in instead.</string>
 </dict>
 </plist>

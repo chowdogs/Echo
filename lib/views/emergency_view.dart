@@ -106,7 +106,7 @@ class _HoldToActivateState extends State<_HoldToActivate>
       _activated = true;
       _holding = false;
     });
-    context.read<TileState>().speak(kEmergencyTile);
+    context.read<TileState>().raiseEmergency();
     HapticFeedback.heavyImpact();
 
     // Re-arm after a moment so the button can be used again.

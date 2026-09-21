@@ -6,6 +6,8 @@ import '../state/tile_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/section_intro.dart';
 import 'board_editor_page.dart';
+import 'patient_qr_page.dart';
+import 'patients_page.dart';
 import 'stats_view.dart';
 
 /// Settings.
@@ -53,6 +55,33 @@ class SettingsView extends StatelessWidget {
                 label: 'Log out',
                 subtitle: 'Sign out of your account on this device',
                 onTap: () => auth!.logout(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Every account is both things: it has its own board, and it may
+          // also control someone else's. So both doors are always shown.
+          _Group(
+            title: 'Care circle',
+            children: <Widget>[
+              _NavRow(
+                icon: Icons.qr_code_2_rounded,
+                label: 'Controller access',
+                subtitle: 'Show a code so a guardian can manage this board',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PatientQrPage(),
+                  ),
+                ),
+              ),
+              const _Divider(),
+              _NavRow(
+                icon: Icons.groups_rounded,
+                label: 'Patients',
+                subtitle: 'Connect to a patient and manage their board',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const PatientsPage()),
+                ),
               ),
             ],
           ),

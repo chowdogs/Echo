@@ -5,8 +5,10 @@ import 'services/board_storage.dart';
 import 'services/firebase_auth_service.dart';
 import 'services/firebase_board_service.dart';
 import 'services/google_auth_service.dart';
+import 'services/pairing_service.dart';
 import 'services/tts_service.dart';
 import 'state/auth_controller.dart';
+import 'state/controller_state.dart';
 import 'state/tile_state.dart';
 import 'theme/app_theme.dart';
 import 'views/auth_view.dart';
@@ -16,6 +18,7 @@ import 'views/settings_view.dart';
 import 'views/speak_view.dart';
 import 'widgets/app_header.dart';
 import 'widgets/bottom_nav.dart';
+import 'widgets/sos_alert_banner.dart';
 
 /// Firebase Realtime Database endpoint for the cloud board (REST API).
 const String kFirebaseUrl =
@@ -98,8 +101,19 @@ class EchoApp extends StatelessWidget {
 
     // Real app: provide auth + board, and gate the UI behind login.
     final BoardStorage storage = BoardStorage();
+    final PairingService pairing = PairingService(baseUrl: kFirebaseUrl);
+    // A second board service, reserved for *other people's* boards, so a
+    // guardian editing a patient can never disturb their own board.
+    final FirebaseBoardService remoteBoard = FirebaseBoardService(
+      baseUrl: kFirebaseUrl,
+    );
+
     return MultiProvider(
-      providers: <ChangeNotifierProvider<ChangeNotifier>>[
+      // Left to inference: the list mixes a plain Provider with
+      // ChangeNotifierProviders, and provider does not export their shared
+      // supertype for us to name here.
+      providers: [
+        Provider<PairingService>.value(value: pairing),
         ChangeNotifierProvider<AuthController>(
           create: (_) => AuthController(
             auth: authService!,
@@ -111,7 +125,12 @@ class EchoApp extends StatelessWidget {
           )..init(),
         ),
         ChangeNotifierProvider<TileState>(
-          create: (_) => TileState(firebase: firebase, storage: storage, tts: tts),
+          create: (_) =>
+              TileState(firebase: firebase, storage: storage, tts: tts),
+        ),
+        ChangeNotifierProvider<ControllerState>(
+          create: (_) =>
+              ControllerState(pairing: pairing, remoteBoard: remoteBoard),
         ),
       ],
       child: Consumer<TileState>(
@@ -148,22 +167,31 @@ class _AuthGateState extends State<_AuthGate> {
   void _sync(AuthController auth) {
     final FirebaseBoardService? firebase = widget.firebase;
     final TileState tiles = context.read<TileState>();
+    final ControllerState controller = context.read<ControllerState>();
 
     if (auth.isLoggedIn) {
       final session = auth.session!;
       firebase?.setAuth(session.uid, session.idToken);
+      controller.setAuth(
+        uid: session.uid,
+        email: session.email,
+        idToken: session.idToken,
+      );
       if (_appliedUid != session.uid) {
         _appliedUid = session.uid;
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => tiles.loadForUser(),
-        );
+        // Deferred: these notify listeners, which must not happen mid-build.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          tiles.loadForUser();
+          controller.refreshPatients();
+        });
       }
     } else if (_appliedUid != null) {
       _appliedUid = null;
       firebase?.clearAuth();
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => tiles.resetToDefaults(),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        tiles.resetToDefaults();
+        controller.clearAuth();
+      });
     }
   }
 
@@ -252,6 +280,9 @@ class MainShell extends StatelessWidget {
     return const Scaffold(
       body: Column(
         children: <Widget>[
+          // Above the header: an emergency from a paired patient outranks
+          // whatever the guardian is currently doing.
+          SosAlertBanner(),
           AppHeader(),
           Expanded(child: _ActiveView()),
           BottomNav(),

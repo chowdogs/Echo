@@ -455,6 +455,17 @@ class TileState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Fires the emergency.
+  ///
+  /// The alarm on this device is the primary signal and happens first; raising
+  /// the SOS record is the remote echo that reaches any paired guardians. A
+  /// failure to reach the network must never mute the local alarm, so the
+  /// cloud write is fire-and-forget like every other.
+  void raiseEmergency() {
+    speak(kEmergencyTile);
+    _cloud(() => _firebase?.raiseSos(kEmergencyTile.label));
+  }
+
   /// The tile spoken most often, or null before anything has been said.
   CommTile? get mostUsedTile {
     if (_utterances.isEmpty) return null;

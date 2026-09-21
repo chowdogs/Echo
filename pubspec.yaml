@@ -40,6 +40,8 @@ dependencies:
   flutter_tts: ^4.2.5
   audioplayers: ^6.7.1
   google_sign_in: ^7.2.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:
