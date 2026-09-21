@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -206,9 +207,74 @@ class TileState extends ChangeNotifier {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Live sync
+  //
+  // A guardian can edit this board from their own device, so the board cannot
+  // be a one-shot load: without this, their changes would not appear until the
+  // patient restarted the app. Polling (rather than a socket) keeps the whole
+  // backend on plain REST, which is what the rest of the app already uses.
+  // ---------------------------------------------------------------------------
+
+  Timer? _syncTimer;
+  DateTime? _lastLocalEdit;
+
+  /// How often the board checks for edits made elsewhere.
+  static const Duration syncInterval = Duration(seconds: 8);
+
+  /// A local edit is still travelling to the server for a moment; re-reading
+  /// inside this window would briefly resurrect what the user just changed.
+  static const Duration _quietAfterLocalEdit = Duration(seconds: 5);
+
+  void startCloudSync() {
+    if (_syncTimer != null) return;
+    final FirebaseBoardService? firebase = _firebase;
+    if (firebase == null) return;
+    _syncTimer = Timer.periodic(syncInterval, (_) => _syncFromCloud());
+  }
+
+  void stopCloudSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+  }
+
+  Future<void> _syncFromCloud() async {
+    final FirebaseBoardService? firebase = _firebase;
+    if (firebase == null || !firebase.hasAuth) return;
+
+    final DateTime? edited = _lastLocalEdit;
+    if (edited != null &&
+        DateTime.now().difference(edited) < _quietAfterLocalEdit) {
+      return;
+    }
+
+    try {
+      final List<CommTile> cloud = await firebase.fetchTiles();
+      // An empty read is ambiguous (a fresh account, a partial response), and
+      // wiping a working board over it would be unrecoverable for the user.
+      if (cloud.isEmpty) return;
+      if (_sameBoard(cloud, _tiles)) return;
+
+      _tiles = cloud;
+      unawaited(_storage.saveTiles(_tiles));
+      notifyListeners();
+    } catch (_) {
+      // Offline — keep showing the board we have.
+    }
+  }
+
+  static bool _sameBoard(List<CommTile> a, List<CommTile> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (jsonEncode(a[i].toJson()) != jsonEncode(b[i].toJson())) return false;
+    }
+    return true;
+  }
+
   /// Resets the board to the built-in defaults (used on logout) and clears the
   /// local cache so the next account starts clean.
   void resetToDefaults() {
+    stopCloudSync();
     _tiles = List<CommTile>.of(kInitialTiles);
     // The usage history belongs to the account that just signed out, so it is
     // cleared with the board rather than bleeding into the next user's stats.
@@ -218,8 +284,11 @@ class TileState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fire-and-forget save of the current board to local storage.
+  /// Fire-and-forget save of the current board to local storage. Also marks
+  /// the moment, so the cloud poll does not read back a stale board while this
+  /// change is still in flight.
   void _persist() {
+    _lastLocalEdit = DateTime.now();
     unawaited(_storage.saveTiles(_tiles));
   }
 
@@ -464,6 +533,12 @@ class TileState extends ChangeNotifier {
   void raiseEmergency() {
     speak(kEmergencyTile);
     _cloud(() => _firebase?.raiseSos(kEmergencyTile.label));
+  }
+
+  @override
+  void dispose() {
+    stopCloudSync();
+    super.dispose();
   }
 
   /// The tile spoken most often, or null before anything has been said.

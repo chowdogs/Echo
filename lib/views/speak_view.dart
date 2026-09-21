@@ -66,8 +66,25 @@ class _SpeakViewState extends State<SpeakView> {
                   },
                 ),
         ),
-        if (pageCount > 1) _PageDots(count: pageCount, active: _page),
+        if (pageCount > 1)
+          _PageNav(
+            count: pageCount,
+            active: _page,
+            onGo: (int page) => _goToPage(page, pageCount),
+          ),
       ],
+    );
+  }
+
+  /// Moves the board a page at a time. Swiping still works, but every page
+  /// change is reachable by tapping alone — a swipe is a gesture plenty of
+  /// AAC users cannot make reliably, and the board must never depend on one.
+  void _goToPage(int page, int pageCount) {
+    if (page < 0 || page >= pageCount || !_controller.hasClients) return;
+    _controller.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
     );
   }
 }
@@ -169,36 +186,109 @@ class _BoardPage extends StatelessWidget {
   }
 }
 
-/// Page position indicator. The active page widens into a pill so the current
-/// position reads at a glance without counting dots.
-class _PageDots extends StatelessWidget {
-  const _PageDots({required this.count, required this.active});
+/// Page navigation: a large Previous / Next button either side of the page
+/// indicator.
+///
+/// The buttons are the primary control, not a convenience — swiping is a
+/// gesture many AAC users cannot perform, so every page must be reachable by
+/// tapping. They are sized as generously as the strip allows, and dim rather
+/// than disappear at the ends so the control never shifts position.
+class _PageNav extends StatelessWidget {
+  const _PageNav({
+    required this.count,
+    required this.active,
+    required this.onGo,
+  });
 
   final int count;
   final int active;
+  final ValueChanged<int> onGo;
 
   @override
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
 
     return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List<Widget>.generate(count, (int index) {
-          final bool isActive = index == active;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: isActive ? 20 : 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: isActive ? c.accent : c.border,
-              borderRadius: BorderRadius.circular(4),
+        children: <Widget>[
+          _NavButton(
+            icon: Icons.chevron_left_rounded,
+            label: 'Previous page',
+            enabled: active > 0,
+            onTap: () => onGo(active - 1),
+          ),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List<Widget>.generate(count, (int index) {
+                final bool isActive = index == active;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: isActive ? 22 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: isActive ? c.accent : c.border,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                );
+              }),
             ),
-          );
-        }),
+          ),
+          _NavButton(
+            icon: Icons.chevron_right_rounded,
+            label: 'Next page',
+            enabled: active < count - 1,
+            onTap: () => onGo(active + 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavButton extends StatelessWidget {
+  const _NavButton({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final EchoColors c = EchoColors.of(context);
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: 62,
+          height: 48,
+          decoration: BoxDecoration(
+            color: enabled ? c.surface : c.surface.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: enabled ? c.border : c.border.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 30,
+            color: enabled ? c.accent : c.muted.withValues(alpha: 0.45),
+          ),
+        ),
       ),
     );
   }

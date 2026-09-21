@@ -182,6 +182,8 @@ class _AuthGateState extends State<_AuthGate> {
         // Deferred: these notify listeners, which must not happen mid-build.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           tiles.loadForUser();
+          // Keep watching: a guardian may edit this board from their device.
+          tiles.startCloudSync();
           controller.refreshPatients();
         });
       }
