@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/comm_tile.dart';
 import '../state/tile_state.dart';
+import '../state/usage_stats.dart';
 import '../theme/app_theme.dart';
 import '../theme/tile_themes.dart';
 import '../widgets/sub_page_header.dart';
@@ -22,51 +23,82 @@ class StatsPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: c.background,
-      body: const Column(
+      body: Column(
         children: <Widget>[
-          SubPageHeader(
+          const SubPageHeader(
             title: 'Stats',
             subtitle: 'A quiet overview for caregivers',
           ),
-          Expanded(child: _StatsBody()),
+          Expanded(
+            child: Builder(
+              builder: (BuildContext context) {
+                final TileState state = context.watch<TileState>();
+                return StatsBody(
+                  utterances: state.utterances,
+                  tiles: state.tiles,
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _StatsBody extends StatelessWidget {
-  const _StatsBody();
+/// The dashboard itself, independent of whose log it is.
+///
+/// The patient's own device passes its local log; a controller's console
+/// passes the log it pulled from the patient's account. Same widget, same
+/// numbers — which is the point.
+class StatsBody extends StatelessWidget {
+  const StatsBody({
+    super.key,
+    required this.utterances,
+    required this.tiles,
+    this.onRefresh,
+  });
+
+  final List<Utterance> utterances;
+  final List<CommTile> tiles;
+
+  /// Supplied by the controller console, where the data is remote and a manual
+  /// refresh is worth offering. Omitted on the patient's own device, where the
+  /// log is already local and live.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    final TileState state = context.watch<TileState>();
-    final CommTile? topTile = state.mostUsedTile;
+    final UsageStats stats = UsageStats(utterances);
 
-    return ListView(
+    final Widget list = ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       children: <Widget>[
-        _HeroStat(count: state.spokenToday),
+        _HeroStat(count: stats.today),
         const SizedBox(height: 12),
         Row(
           children: <Widget>[
-            Expanded(child: _MostUsedCard(tile: topTile)),
+            Expanded(child: _MostUsedCard(tile: stats.mostUsedTile(tiles))),
             const SizedBox(width: 12),
             Expanded(
               child: _MiniStat(
                 icon: Icons.local_fire_department_rounded,
                 label: 'Day streak',
-                value: '${state.dayStreak}',
+                value: '${stats.dayStreak}',
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        _WeeklyChart(series: state.weeklySeries),
+        _WeeklyChart(series: stats.weekly),
         const SizedBox(height: 12),
-        _RecentActivity(utterances: state.utterances),
+        _RecentActivity(utterances: utterances),
       ],
     );
+
+    final Future<void> Function()? refresh = onRefresh;
+    if (refresh == null) return list;
+    return RefreshIndicator(onRefresh: refresh, child: list);
   }
 }
 

@@ -7,6 +7,7 @@ import '../models/comm_tile.dart';
 import '../services/board_storage.dart';
 import '../services/firebase_board_service.dart';
 import '../services/tts_service.dart';
+import 'usage_stats.dart';
 
 /// The nine starter tiles.
 ///
@@ -191,6 +192,14 @@ class TileState extends ChangeNotifier {
       // Offline or unreachable — keep whatever is loaded locally.
     }
 
+    // Layout and theme come down from the account too, because a controller
+    // sets them from their own device.
+    try {
+      _applySettings(await firebase.fetchSettings());
+    } catch (_) {
+      // Keep the device's own settings.
+    }
+
     // The usage history is a separate concern: a failure here must not cost
     // us the board we just loaded, so it gets its own guard.
     try {
@@ -249,6 +258,9 @@ class TileState extends ChangeNotifier {
     }
 
     try {
+      // Layout and theme first: a controller may have changed only those.
+      _applySettings(await firebase.fetchSettings());
+
       final List<CommTile> cloud = await firebase.fetchTiles();
       // An empty read is ambiguous (a fresh account, a partial response), and
       // wiping a working board over it would be unrecoverable for the user.
@@ -261,6 +273,45 @@ class TileState extends ChangeNotifier {
     } catch (_) {
       // Offline — keep showing the board we have.
     }
+  }
+
+  /// Applies layout and theme received from the account. Returns true when
+  /// anything actually changed, so callers can avoid a pointless rebuild.
+  bool _applySettings(Map<String, dynamic> settings) {
+    var changed = false;
+
+    final Object? columns = settings['gridColumns'];
+    final Object? rows = settings['gridRows'];
+    final Object? dark = settings['darkMode'];
+
+    if (columns is int) {
+      final int next = columns.clamp(kMinGridAxis, kMaxGridAxis);
+      if (next != _gridColumns) {
+        _gridColumns = next;
+        changed = true;
+      }
+    }
+    if (rows is int) {
+      final int next = rows.clamp(kMinGridAxis, kMaxGridAxis);
+      if (next != _gridRows) {
+        _gridRows = next;
+        changed = true;
+      }
+    }
+    if (dark is bool) {
+      final ThemeMode next = dark ? ThemeMode.dark : ThemeMode.light;
+      if (next != _themeMode) {
+        _themeMode = next;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      unawaited(_storage.saveGrid(_gridColumns, _gridRows));
+      unawaited(_storage.saveDarkMode(isDarkMode));
+      notifyListeners();
+    }
+    return changed;
   }
 
   static bool _sameBoard(List<CommTile> a, List<CommTile> b) {
@@ -343,6 +394,12 @@ class TileState extends ChangeNotifier {
     _gridColumns = nextColumns;
     _gridRows = nextRows;
     unawaited(_storage.saveGrid(_gridColumns, _gridRows));
+    _cloud(
+      () => _firebase?.patchSettings(
+        gridColumns: _gridColumns,
+        gridRows: _gridRows,
+      ),
+    );
     notifyListeners();
   }
 
@@ -350,67 +407,20 @@ class TileState extends ChangeNotifier {
   // Caregiver stats — all derived from the persisted utterance log.
   // ---------------------------------------------------------------------------
 
-  static bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  /// All caregiver figures come from one place, so the patient's device and a
+  /// controller's console can never disagree about them.
+  UsageStats get stats => UsageStats(_utterances);
 
-  /// Utterances spoken today. This is the dashboard's headline number, so it
-  /// must mean "today" rather than "this session".
-  int get spokenToday {
-    final DateTime now = DateTime.now();
-    return _utterances
-        .where((Utterance u) => _isSameDay(u.spokenAt, now))
-        .length;
-  }
-
-  /// Consecutive days up to today on which at least one tile was spoken.
-  /// Returns 0 when nothing was spoken today — the streak is already broken.
-  int get dayStreak {
-    if (_utterances.isEmpty) return 0;
-
-    final Set<String> days = _utterances
-        .map(
-          (Utterance u) =>
-              '${u.spokenAt.year}-${u.spokenAt.month}-${u.spokenAt.day}',
-        )
-        .toSet();
-
-    var streak = 0;
-    DateTime cursor = DateTime.now();
-    while (days.contains('${cursor.year}-${cursor.month}-${cursor.day}')) {
-      streak++;
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return streak;
-  }
-
-  /// The last seven days, oldest first, as (weekday label, count) pairs —
-  /// the series behind the dashboard's bar chart.
-  List<({String day, int count})> get weeklySeries {
-    const List<String> labels = <String>[
-      'Mon',
-      'Tue',
-      'Wed',
-      'Thu',
-      'Fri',
-      'Sat',
-      'Sun',
-    ];
-    final DateTime today = DateTime.now();
-
-    return List<({String day, int count})>.generate(7, (int i) {
-      final DateTime day = today.subtract(Duration(days: 6 - i));
-      final int count = _utterances
-          .where((Utterance u) => _isSameDay(u.spokenAt, day))
-          .length;
-      return (day: labels[day.weekday - 1], count: count);
-    });
-  }
+  int get spokenToday => stats.today;
+  int get dayStreak => stats.dayStreak;
+  List<({String day, int count})> get weeklySeries => stats.weekly;
 
   void setDarkMode(bool value) {
     final ThemeMode next = value ? ThemeMode.dark : ThemeMode.light;
     if (_themeMode == next) return;
     _themeMode = next;
     unawaited(_storage.saveDarkMode(value));
+    _cloud(() => _firebase?.patchSettings(darkMode: value));
     notifyListeners();
   }
 
@@ -542,21 +552,5 @@ class TileState extends ChangeNotifier {
   }
 
   /// The tile spoken most often, or null before anything has been said.
-  CommTile? get mostUsedTile {
-    if (_utterances.isEmpty) return null;
-
-    final Map<String, int> counts = <String, int>{};
-    for (final Utterance utterance in _utterances) {
-      counts[utterance.tileId] = (counts[utterance.tileId] ?? 0) + 1;
-    }
-
-    final String topId = counts.entries
-        .reduce((a, b) => b.value > a.value ? b : a)
-        .key;
-
-    for (final CommTile tile in _tiles) {
-      if (tile.id == topId) return tile;
-    }
-    return null;
-  }
+  CommTile? get mostUsedTile => stats.mostUsedTile(_tiles);
 }

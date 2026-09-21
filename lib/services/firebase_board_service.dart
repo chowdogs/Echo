@@ -154,6 +154,38 @@ class FirebaseBoardService {
     return log;
   }
 
+  /// READ — GET /settings.json. The patient's board layout and appearance.
+  ///
+  /// These used to be device-local preferences. They live in the cloud now
+  /// because a controller sets them up on the patient's behalf, from their own
+  /// device — the patient never has to open a settings screen at all.
+  Future<Map<String, dynamic>> fetchSettings() async {
+    final http.Response resp = await _send(
+      () => _client.get(_uri('settings')),
+    );
+    final Object? decoded = jsonDecode(resp.body);
+    if (decoded is! Map) return <String, dynamic>{};
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  /// UPDATE — PATCH /settings.json. Only the named fields are touched, so a
+  /// controller changing the layout cannot clobber the theme, or vice versa.
+  Future<void> patchSettings({
+    int? gridColumns,
+    int? gridRows,
+    bool? darkMode,
+  }) {
+    final Map<String, dynamic> body = <String, dynamic>{
+      if (gridColumns != null) 'gridColumns': gridColumns,
+      if (gridRows != null) 'gridRows': gridRows,
+      if (darkMode != null) 'darkMode': darkMode,
+    };
+    if (body.isEmpty) return Future<void>.value();
+    return _send(
+      () => _client.patch(_uri('settings'), body: jsonEncode(body)),
+    );
+  }
+
   /// SOS — POST /sos.json. Raises an emergency event on the patient's record
   /// for their guardians to pick up. Fired alongside the local alarm, never
   /// instead of it: the sound on the patient's own device is the primary

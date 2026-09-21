@@ -12,6 +12,7 @@ import 'state/controller_state.dart';
 import 'state/tile_state.dart';
 import 'theme/app_theme.dart';
 import 'views/auth_view.dart';
+import 'views/controller_console.dart';
 import 'views/emergency_view.dart';
 import 'views/landing_view.dart';
 import 'views/settings_view.dart';
@@ -129,8 +130,12 @@ class EchoApp extends StatelessWidget {
               TileState(firebase: firebase, storage: storage, tts: tts),
         ),
         ChangeNotifierProvider<ControllerState>(
-          create: (_) =>
-              ControllerState(pairing: pairing, remoteBoard: remoteBoard),
+          create: (_) => ControllerState(
+            pairing: pairing,
+            remoteBoard: remoteBoard,
+            // The same voice the patient hears speaks the guardian's alert.
+            tts: tts,
+          ),
         ),
       ],
       child: Consumer<TileState>(
@@ -184,7 +189,8 @@ class _AuthGateState extends State<_AuthGate> {
           tiles.loadForUser();
           // Keep watching: a guardian may edit this board from their device.
           tiles.startCloudSync();
-          controller.refreshPatients();
+          // Decides which of the two interfaces this account gets.
+          controller.resolveRole();
         });
       }
     } else if (_appliedUid != null) {
@@ -200,16 +206,26 @@ class _AuthGateState extends State<_AuthGate> {
   @override
   Widget build(BuildContext context) {
     final AuthController auth = context.watch<AuthController>();
+    final ControllerState care = context.watch<ControllerState>();
     final EchoColors c = EchoColors.of(context);
     _sync(auth);
 
+    final Widget loading = Scaffold(
+      backgroundColor: c.background,
+      body: Center(child: CircularProgressIndicator(color: c.accent)),
+    );
+
     return switch (auth.status) {
-      AuthStatus.unknown => Scaffold(
-        backgroundColor: c.background,
-        body: Center(child: CircularProgressIndicator(color: c.accent)),
-      ),
+      AuthStatus.unknown => loading,
       AuthStatus.loggedOut => const _UnauthedFlow(),
-      AuthStatus.loggedIn => const MainShell(),
+      // The two roles are exclusive interfaces, chosen once the account's
+      // pairings are known: a controller gets the console and no board of its
+      // own; everyone else gets the patient shell.
+      AuthStatus.loggedIn => switch (care.role) {
+        EchoRole.unknown => loading,
+        EchoRole.controller => const ControllerConsole(),
+        EchoRole.patient => const MainShell(),
+      },
     };
   }
 }

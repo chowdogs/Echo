@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../models/pairing.dart';
 import '../services/pairing_service.dart';
 import '../state/auth_controller.dart';
+import '../state/controller_state.dart' show kMaxGuardiansPerPatient;
 import '../theme/app_theme.dart';
 import '../widgets/sub_page_header.dart';
 
@@ -106,6 +107,24 @@ class _PatientQrPageState extends State<PatientQrPage> {
       if (claimedBy is! String || claimedBy.isEmpty) return;
 
       final Object? claimedEmail = record?['claimedEmail'];
+
+      // The cap is enforced here, at the only point that can enforce it: the
+      // patient's own device is the one writing the grant.
+      final List<PatientLink> existing = await pairing.fetchControllers(uid);
+      final bool alreadyLinked = existing.any(
+        (PatientLink g) => g.uid == claimedBy,
+      );
+      if (!alreadyLinked && existing.length >= kMaxGuardiansPerPatient) {
+        _poll?.cancel();
+        await pairing.deletePairing(code);
+        if (!mounted) return;
+        setState(
+          () => _error =
+              'You already have $kMaxGuardiansPerPatient guardians. Remove '
+              'one in Settings before adding another.',
+        );
+        return;
+      }
 
       await pairing.grantAccess(
         patientUid: uid,
