@@ -18,6 +18,7 @@ class BoardStorage {
   static const String _themeKey = 'echo.settings.darkMode.v1';
   static const String _sessionKey = 'echo.auth.session.v1';
   static const String _gridKey = 'echo.board.grid.v1';
+  static const String _scanKey = 'echo.board.scanning.v1';
   static const String _logKey = 'echo.board.log.v1';
 
   /// Most recent utterances kept on device. Enough for the caregiver
@@ -113,6 +114,33 @@ class BoardStorage {
       final int? rows = int.tryParse(parts[1]);
       if (columns == null || rows == null) return null;
       return (columns: columns, rows: rows);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saves the switch-scanning preference (on/off and dwell seconds).
+  Future<void> saveScanning(bool enabled, int seconds) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_scanKey, '$enabled:$seconds');
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  /// Returns the saved scanning preference, or null if none is stored.
+  Future<({bool enabled, int seconds})?> loadScanning() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? raw = prefs.getString(_scanKey);
+      if (raw == null) return null;
+
+      final List<String> parts = raw.split(':');
+      if (parts.length != 2) return null;
+      final int? seconds = int.tryParse(parts[1]);
+      if (seconds == null) return null;
+      return (enabled: parts[0] == 'true', seconds: seconds);
     } catch (_) {
       return null;
     }

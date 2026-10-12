@@ -5,7 +5,8 @@ import '../models/comm_tile.dart';
 import '../models/pairing.dart';
 import '../state/auth_controller.dart';
 import '../state/controller_state.dart';
-import '../state/tile_state.dart' show kMaxGridAxis, kMinGridAxis;
+import '../state/tile_state.dart'
+    show kMaxGridAxis, kMaxScanSeconds, kMinGridAxis, kMinScanSeconds;
 import '../theme/app_theme.dart';
 import '../theme/tile_themes.dart';
 import '../widgets/settings_rows.dart';
@@ -571,6 +572,36 @@ class _SetupTab extends StatelessWidget {
             'device. Extra tiles flow onto more pages.',
             style: TextStyle(fontSize: 12, height: 1.45, color: c.muted),
           ),
+        ),
+        const SizedBox(height: 14),
+        // Set from here on purpose: a patient who needs scanning is, by
+        // definition, the person least able to switch it on for themselves.
+        SettingsGroup(
+          title: 'Their accessibility',
+          children: <Widget>[
+            SettingsSwitchRow(
+              icon: Icons.touch_app_rounded,
+              label: 'Switch scanning',
+              subtitle: 'Highlights each tile; any press chooses it',
+              value: controller.remoteScanning,
+              onChanged: (bool v) =>
+                  context.read<ControllerState>().setRemoteScanning(enabled: v),
+            ),
+            if (controller.remoteScanning) ...<Widget>[
+              const SettingsDivider(),
+              SettingsStepperRow(
+                icon: Icons.timer_outlined,
+                label: 'Seconds per tile',
+                subtitle: 'Slower suits a less certain press',
+                value: controller.remoteScanSeconds,
+                min: kMinScanSeconds,
+                max: kMaxScanSeconds,
+                onChanged: (int v) => context
+                    .read<ControllerState>()
+                    .setRemoteScanning(seconds: v),
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: 14),
         SettingsGroup(

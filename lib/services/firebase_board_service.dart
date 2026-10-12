@@ -242,11 +242,15 @@ class FirebaseBoardService {
     int? gridColumns,
     int? gridRows,
     bool? darkMode,
+    bool? scanningEnabled,
+    int? scanSeconds,
   }) {
     final Map<String, dynamic> body = <String, dynamic>{
       if (gridColumns != null) 'gridColumns': gridColumns,
       if (gridRows != null) 'gridRows': gridRows,
       if (darkMode != null) 'darkMode': darkMode,
+      if (scanningEnabled != null) 'scanningEnabled': scanningEnabled,
+      if (scanSeconds != null) 'scanSeconds': scanSeconds,
     };
     if (body.isEmpty) return Future<void>.value();
     return _send(

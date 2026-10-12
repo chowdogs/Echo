@@ -350,21 +350,32 @@ class _StepButton extends StatelessWidget {
       enabled: enabled,
       label: semanticLabel,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: enabled ? onTap : null,
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: enabled
-                ? c.surfaceHigh
-                : c.surfaceHigh.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: c.border),
-          ),
-          child: Icon(
-            icon,
-            size: 19,
-            color: enabled ? c.accent : c.muted.withValues(alpha: 0.5),
+        // The visible button stays 34px so the row does not become bulky, but
+        // the touch target is padded out to 48 — the accessibility minimum,
+        // and the people adjusting a board are often the least precise
+        // tappers in the room.
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: enabled
+                    ? c.surfaceHigh
+                    : c.surfaceHigh.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: c.border),
+              ),
+              child: Icon(
+                icon,
+                size: 19,
+                color: enabled ? c.accent : c.muted.withValues(alpha: 0.5),
+              ),
+            ),
           ),
         ),
       ),

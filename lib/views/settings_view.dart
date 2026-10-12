@@ -159,6 +159,44 @@ class _SettingsViewState extends State<SettingsView> {
         ],
 
         SettingsGroup(
+          title: 'Accessibility',
+          children: <Widget>[
+            SettingsSwitchRow(
+              icon: Icons.touch_app_rounded,
+              label: 'Switch scanning',
+              subtitle: 'Highlight each tile in turn; press anywhere to choose',
+              value: tiles.scanningEnabled,
+              onChanged: (bool v) =>
+                  context.read<TileState>().setScanning(enabled: v),
+            ),
+            if (tiles.scanningEnabled) ...<Widget>[
+              const SettingsDivider(),
+              SettingsStepperRow(
+                icon: Icons.timer_outlined,
+                label: 'Seconds per tile',
+                subtitle: 'How long the highlight rests before moving on',
+                value: tiles.scanSeconds,
+                min: kMinScanSeconds,
+                max: kMaxScanSeconds,
+                onChanged: (int v) =>
+                    context.read<TileState>().setScanning(seconds: v),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Switch scanning is for anyone who cannot reliably tap a specific '
+            'tile. The board highlights each tile in turn, and a press '
+            'anywhere on the screen — or on a connected switch — speaks the '
+            'highlighted one.',
+            style: TextStyle(fontSize: 12, height: 1.45, color: c.muted),
+          ),
+        ),
+        const SizedBox(height: 14),
+        SettingsGroup(
           title: 'Appearance',
           children: <Widget>[
             SettingsSwitchRow(

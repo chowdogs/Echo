@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/comm_tile.dart';
@@ -25,16 +28,82 @@ class _SpeakViewState extends State<SpeakView> {
   final PageController _controller = PageController();
   int _page = 0;
 
+  // --- Switch scanning ------------------------------------------------------
+  Timer? _scanTimer;
+  int _scanIndex = 0;
+
   @override
   void dispose() {
+    _scanTimer?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Starts, restarts, or stops the highlight depending on the current
+  /// setting. Called on every build so a change made remotely by a controller
+  /// takes effect without the patient touching anything.
+  void _syncScanning(TileState state) {
+    if (!state.scanningEnabled || state.tiles.isEmpty) {
+      if (_scanTimer != null) {
+        _scanTimer?.cancel();
+        _scanTimer = null;
+      }
+      return;
+    }
+    if (_scanTimer != null && _scanTimer!.tick >= 0) {
+      // Already running at some interval; restart only if the speed changed.
+      if (_scanPeriod == state.scanInterval) return;
+      _scanTimer?.cancel();
+    }
+    _scanPeriod = state.scanInterval;
+    _scanTimer = Timer.periodic(state.scanInterval, (_) => _advanceScan());
+  }
+
+  Duration? _scanPeriod;
+
+  void _advanceScan() {
+    if (!mounted) return;
+    final TileState state = context.read<TileState>();
+    final int onPage = state.tilesForPage(_page).length;
+    if (onPage == 0) return;
+
+    setState(() {
+      if (_scanIndex + 1 < onPage) {
+        _scanIndex++;
+        return;
+      }
+      // End of the page: move to the next one, wrapping at the end, so every
+      // tile on every page is reachable without a single accurate tap.
+      _scanIndex = 0;
+      final int next = (_page + 1) % state.pageCount;
+      if (next != _page) {
+        _page = next;
+        if (_controller.hasClients) {
+          _controller.animateToPage(
+            next,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      }
+    });
+  }
+
+  /// Chooses whatever the highlight is resting on. Any press anywhere counts,
+  /// which is the whole point: the user does not have to hit the tile.
+  void _selectScanned() {
+    final TileState state = context.read<TileState>();
+    final List<CommTile> onPage = state.tilesForPage(_page);
+    if (onPage.isEmpty) return;
+    final int index = _scanIndex.clamp(0, onPage.length - 1);
+    state.speak(onPage[index]);
   }
 
   @override
   Widget build(BuildContext context) {
     final TileState state = context.watch<TileState>();
     final int pageCount = state.pageCount;
+    _syncScanning(state);
 
     // Deleting tiles or shrinking the layout can strand us past the last
     // page; step back to the final one rather than showing a blank board.
@@ -47,7 +116,7 @@ class _SpeakViewState extends State<SpeakView> {
       });
     }
 
-    return Column(
+    final Widget board = Column(
       children: <Widget>[
         _Header(page: _page, pageCount: pageCount),
         Expanded(
@@ -56,12 +125,23 @@ class _SpeakViewState extends State<SpeakView> {
               : PageView.builder(
                   controller: _controller,
                   itemCount: pageCount,
-                  onPageChanged: (int page) => setState(() => _page = page),
+                  // Scanning drives the page itself; letting a stray swipe
+                  // move it as well would desynchronise the highlight.
+                  physics: state.scanningEnabled
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+                  onPageChanged: (int page) => setState(() {
+                    _page = page;
+                    _scanIndex = 0;
+                  }),
                   itemBuilder: (BuildContext context, int index) {
                     return _BoardPage(
                       tiles: state.tilesForPage(index),
                       columns: state.gridColumns,
                       rows: state.gridRows,
+                      highlight: state.scanningEnabled && index == _page
+                          ? _scanIndex
+                          : null,
                     );
                   },
                 ),
@@ -73,6 +153,31 @@ class _SpeakViewState extends State<SpeakView> {
             onGo: (int page) => _goToPage(page, pageCount),
           ),
       ],
+    );
+
+    if (!state.scanningEnabled) return board;
+
+    // In scanning mode the whole screen is the switch. A press anywhere — a
+    // finger, an external switch emulating a key — chooses whatever the
+    // highlight is resting on. A direct tap on a tile still wins the gesture
+    // arena, so a carer can use the board normally at the same time.
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (FocusNode node, KeyEvent event) {
+        if (event is KeyDownEvent) {
+          _selectScanned();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Semantics(
+        label: 'Scanning. Press anywhere to choose the highlighted tile.',
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _selectScanned,
+          child: board,
+        ),
+      ),
     );
   }
 
@@ -140,11 +245,16 @@ class _BoardPage extends StatelessWidget {
     required this.tiles,
     required this.columns,
     required this.rows,
+    this.highlight,
   });
 
   final List<CommTile> tiles;
   final int columns;
   final int rows;
+
+  /// Index of the tile the scanning highlight is resting on, or null when
+  /// scanning is off or this is not the visible page.
+  final int? highlight;
 
   static const double _padding = 14;
   static const double _spacing = 12;
@@ -177,8 +287,12 @@ class _BoardPage extends StatelessWidget {
           mainAxisSpacing: _spacing,
           childAspectRatio: aspect,
           children: <Widget>[
-            for (final CommTile tile in tiles)
-              TileButton(tile: tile, onActivate: onActivate),
+            for (final (int index, CommTile tile) in tiles.indexed)
+              TileButton(
+                tile: tile,
+                onActivate: onActivate,
+                scanHighlighted: highlight == index,
+              ),
           ],
         );
       },

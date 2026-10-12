@@ -7,7 +7,13 @@ import '../models/pairing.dart';
 import '../services/firebase_board_service.dart';
 import '../services/pairing_service.dart';
 import '../services/tts_service.dart';
-import 'tile_state.dart' show kMaxGridAxis, kMinGridAxis;
+import 'tile_state.dart'
+    show
+        kDefaultScanSeconds,
+        kMaxGridAxis,
+        kMaxScanSeconds,
+        kMinGridAxis,
+        kMinScanSeconds;
 
 /// One emergency alert as a guardian sees it: the event plus who raised it.
 typedef PatientAlert = ({PatientLink patient, SosEvent event});
@@ -84,6 +90,8 @@ class ControllerState extends ChangeNotifier {
   int _remoteColumns = 3;
   int _remoteRows = 3;
   bool _remoteDarkMode = false;
+  bool _remoteScanning = false;
+  int _remoteScanSeconds = kDefaultScanSeconds;
   bool _loading = false;
 
   EchoRole get role => _role;
@@ -105,6 +113,8 @@ class ControllerState extends ChangeNotifier {
   int get remoteRows => _remoteRows;
   int get remoteTilesPerPage => _remoteColumns * _remoteRows;
   bool get remoteDarkMode => _remoteDarkMode;
+  bool get remoteScanning => _remoteScanning;
+  int get remoteScanSeconds => _remoteScanSeconds;
 
   void setAuth({
     required String uid,
@@ -332,6 +342,13 @@ class ControllerState extends ChangeNotifier {
       if (rows is int) _remoteRows = rows.clamp(kMinGridAxis, kMaxGridAxis);
       if (dark is bool) _remoteDarkMode = dark;
 
+      final Object? scanning = settings['scanningEnabled'];
+      final Object? scanSecs = settings['scanSeconds'];
+      if (scanning is bool) _remoteScanning = scanning;
+      if (scanSecs is int) {
+        _remoteScanSeconds = scanSecs.clamp(kMinScanSeconds, kMaxScanSeconds);
+      }
+
       _remoteLog = await _board.fetchLog();
     } on FirebaseBoardException catch (e) {
       _error = e.message;
@@ -373,6 +390,28 @@ class ControllerState extends ChangeNotifier {
       () => _board.patchSettings(
         gridColumns: _remoteColumns,
         gridRows: _remoteRows,
+      ),
+    );
+  }
+
+  /// Turns switch scanning on (or retunes it) on the patient's device.
+  Future<void> setRemoteScanning({bool? enabled, int? seconds}) async {
+    final bool nextEnabled = enabled ?? _remoteScanning;
+    final int nextSeconds = (seconds ?? _remoteScanSeconds).clamp(
+      kMinScanSeconds,
+      kMaxScanSeconds,
+    );
+    if (nextEnabled == _remoteScanning && nextSeconds == _remoteScanSeconds) {
+      return;
+    }
+
+    _remoteScanning = nextEnabled;
+    _remoteScanSeconds = nextSeconds;
+    notifyListeners();
+    await _write(
+      () => _board.patchSettings(
+        scanningEnabled: _remoteScanning,
+        scanSeconds: _remoteScanSeconds,
       ),
     );
   }

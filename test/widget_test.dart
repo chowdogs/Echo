@@ -90,6 +90,57 @@ void main() {
       expect(state.tiles.length, before - 1);
       expect(state.tiles.any((t) => t.id == id), isFalse);
     });
+
+    test('switch scanning is off until it is turned on', () {
+      expect(TileState().scanningEnabled, isFalse);
+    });
+
+    test('setScanning toggles scanning and keeps the dwell time', () {
+      final TileState state = TileState();
+
+      state.setScanning(enabled: true);
+
+      expect(state.scanningEnabled, isTrue);
+      expect(state.scanSeconds, kDefaultScanSeconds);
+      expect(state.scanInterval, Duration(seconds: state.scanSeconds));
+    });
+
+    test('scanning speed is clamped to a usable range', () {
+      final TileState state = TileState();
+
+      // Too fast to press in time, and too slow to be bearable — both are
+      // ways to make the board unusable, so neither is accepted.
+      state.setScanning(seconds: 0);
+      expect(state.scanSeconds, kMinScanSeconds);
+
+      state.setScanning(seconds: 99);
+      expect(state.scanSeconds, kMaxScanSeconds);
+    });
+
+    test('board layout is clamped to a tappable range', () {
+      final TileState state = TileState();
+
+      state.setGrid(columns: 0, rows: 0);
+      expect(state.gridColumns, kMinGridAxis);
+      expect(state.gridRows, kMinGridAxis);
+
+      state.setGrid(columns: 99, rows: 99);
+      expect(state.gridColumns, kMaxGridAxis);
+      expect(state.gridRows, kMaxGridAxis);
+    });
+
+    test('pages are derived from the layout', () {
+      final TileState state = TileState();
+
+      // Nine starter tiles, four per page, so three pages with one left over.
+      state.setGrid(columns: 2, rows: 2);
+
+      expect(state.tilesPerPage, 4);
+      expect(state.pageCount, 3);
+      expect(state.tilesForPage(0).length, 4);
+      expect(state.tilesForPage(2).length, 1);
+      expect(state.tilesForPage(99), isEmpty);
+    });
   });
 
   group('Echo app', () {
@@ -176,6 +227,8 @@ void main() {
 
         await tester.tap(find.bySemanticsLabel('Settings'));
         await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(find.text('Dark mode'), 120);
+        await tester.pumpAndSettle();
         expect(find.text('Dark mode'), findsOneWidget);
 
         // The Stats page, reached from Settings, lays out too. Scroll the row
@@ -199,10 +252,20 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('Settings'));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Dark mode'), 120);
+      await tester.pumpAndSettle();
       expect(find.text('Dark mode'), findsOneWidget);
 
-      // The Appearance group is first, so its switch is the first one.
-      await tester.tap(find.byType(Switch).first);
+      // Target the switch inside the Dark mode row specifically — the
+      // Accessibility group above it also has one.
+      await tester.tap(
+        find.descendant(
+          of: find
+              .ancestor(of: find.text('Dark mode'), matching: find.byType(Row))
+              .first,
+          matching: find.byType(Switch),
+        ),
+      );
       await tester.pumpAndSettle();
 
       app = tester.widget(find.byType(MaterialApp));

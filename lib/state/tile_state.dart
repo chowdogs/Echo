@@ -103,6 +103,15 @@ const int kMaxGridAxis = 5;
 const int kDefaultGridColumns = 3;
 const int kDefaultGridRows = 3;
 
+/// How long the scanning highlight rests on each tile, in seconds.
+///
+/// One second suits a practised user; six gives someone with a slow or
+/// unreliable press time to commit. Getting this wrong in either direction
+/// makes the board unusable, which is why it is adjustable rather than fixed.
+const int kMinScanSeconds = 1;
+const int kMaxScanSeconds = 6;
+const int kDefaultScanSeconds = 2;
+
 /// App-wide state. The Flutter counterpart of the React context this app was
 /// first prototyped with.
 class TileState extends ChangeNotifier {
@@ -143,6 +152,14 @@ class TileState extends ChangeNotifier {
   /// Until it has, an empty cloud result cannot be trusted to mean "empty".
   bool _cloudLoaded = false;
 
+  // Switch scanning: a highlight steps through the tiles on its own and the
+  // user presses anything at all to choose the highlighted one. For someone
+  // who cannot reliably land a finger on a specific tile — the people this app
+  // exists for — this is the difference between a usable board and a useless
+  // one, so it lives in the account and a controller can turn it on remotely.
+  bool _scanningEnabled = false;
+  int _scanSeconds = kDefaultScanSeconds;
+
   /// Loads the board and theme from local storage at startup (instant and
   /// offline-safe). The per-account cloud board is loaded separately by
   /// [loadForUser] once the user signs in.
@@ -150,6 +167,7 @@ class TileState extends ChangeNotifier {
     final List<CommTile>? saved = await _storage.loadTiles();
     final bool? dark = await _storage.loadDarkMode();
     final ({int columns, int rows})? grid = await _storage.loadGrid();
+    final ({bool enabled, int seconds})? scan = await _storage.loadScanning();
     final List<Utterance>? log = await _storage.loadUtterances();
 
     var changed = false;
@@ -164,6 +182,11 @@ class TileState extends ChangeNotifier {
     if (grid != null) {
       _gridColumns = grid.columns.clamp(kMinGridAxis, kMaxGridAxis);
       _gridRows = grid.rows.clamp(kMinGridAxis, kMaxGridAxis);
+      changed = true;
+    }
+    if (scan != null) {
+      _scanningEnabled = scan.enabled;
+      _scanSeconds = scan.seconds.clamp(kMinScanSeconds, kMaxScanSeconds);
       changed = true;
     }
     if (log != null && log.isNotEmpty) {
@@ -378,9 +401,24 @@ class TileState extends ChangeNotifier {
       }
     }
 
+    final Object? scanning = settings['scanningEnabled'];
+    final Object? scanSecs = settings['scanSeconds'];
+    if (scanning is bool && scanning != _scanningEnabled) {
+      _scanningEnabled = scanning;
+      changed = true;
+    }
+    if (scanSecs is int) {
+      final int next = scanSecs.clamp(kMinScanSeconds, kMaxScanSeconds);
+      if (next != _scanSeconds) {
+        _scanSeconds = next;
+        changed = true;
+      }
+    }
+
     if (changed) {
       unawaited(_storage.saveGrid(_gridColumns, _gridRows));
       unawaited(_storage.saveDarkMode(isDarkMode));
+      unawaited(_storage.saveScanning(_scanningEnabled, _scanSeconds));
       notifyListeners();
     }
     return changed;
@@ -453,6 +491,34 @@ class TileState extends ChangeNotifier {
     if (start >= _tiles.length) return const <CommTile>[];
     final int end = (start + tilesPerPage).clamp(0, _tiles.length);
     return List<CommTile>.unmodifiable(_tiles.sublist(start, end));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Switch scanning
+  // ---------------------------------------------------------------------------
+
+  bool get scanningEnabled => _scanningEnabled;
+  int get scanSeconds => _scanSeconds;
+  Duration get scanInterval => Duration(seconds: _scanSeconds);
+
+  void setScanning({bool? enabled, int? seconds}) {
+    final bool nextEnabled = enabled ?? _scanningEnabled;
+    final int nextSeconds = (seconds ?? _scanSeconds).clamp(
+      kMinScanSeconds,
+      kMaxScanSeconds,
+    );
+    if (nextEnabled == _scanningEnabled && nextSeconds == _scanSeconds) return;
+
+    _scanningEnabled = nextEnabled;
+    _scanSeconds = nextSeconds;
+    unawaited(_storage.saveScanning(_scanningEnabled, _scanSeconds));
+    _cloud(
+      () => _firebase?.patchSettings(
+        scanningEnabled: _scanningEnabled,
+        scanSeconds: _scanSeconds,
+      ),
+    );
+    notifyListeners();
   }
 
   /// Sets the board layout. Values outside [kMinGridAxis]..[kMaxGridAxis] are

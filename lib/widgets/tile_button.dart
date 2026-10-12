@@ -21,10 +21,20 @@ import 'tile_glyph.dart';
 /// food" — but only if it is visible from across a room. The tint stays low
 /// enough that the board still reads as an adult tool rather than a toy.
 class TileButton extends StatefulWidget {
-  const TileButton({super.key, required this.tile, required this.onActivate});
+  const TileButton({
+    super.key,
+    required this.tile,
+    required this.onActivate,
+    this.scanHighlighted = false,
+  });
 
   final CommTile tile;
   final ValueChanged<CommTile> onActivate;
+
+  /// True while the scanning highlight is resting on this tile. It has to be
+  /// unmistakable from across a room and distinguishable without relying on
+  /// colour, so it reads as a thick ring plus a lift rather than a tint.
+  final bool scanHighlighted;
 
   @override
   State<TileButton> createState() => _TileButtonState();
@@ -51,8 +61,11 @@ class _TileButtonState extends State<TileButton> {
     final Color accent = tileAccentOf(context, widget.tile.colorTheme);
     final bool hasImage = widget.tile.imageUrl != null;
 
+    final bool lit = _isPressed || widget.scanHighlighted;
+
     return Semantics(
       button: true,
+      selected: widget.scanHighlighted,
       // The spoken sentence, not the short face label — a screen-reader user
       // should hear what the tile will actually say.
       label: widget.tile.ttsPhrase,
@@ -63,21 +76,25 @@ class _TileButtonState extends State<TileButton> {
         onTapCancel: () => _setPressed(false),
         onTap: _activate,
         child: AnimatedScale(
-          scale: _isPressed ? 0.955 : 1.0,
+          scale: _isPressed
+              ? 0.955
+              : widget.scanHighlighted
+              ? 1.03
+              : 1.0,
           duration: const Duration(milliseconds: 110),
           curve: Curves.easeOut,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 110),
             decoration: BoxDecoration(
-              color: _isPressed
+              color: lit
                   ? c.tintedSurface(accent, strength: 2.2)
                   : c.tintedSurface(accent),
               borderRadius: BorderRadius.circular(EchoRadius.xl),
               border: Border.all(
-                color: accent.withValues(alpha: _isPressed ? 0.95 : 0.34),
-                width: _isPressed ? 2.5 : 1.5,
+                color: accent.withValues(alpha: lit ? 0.95 : 0.34),
+                width: widget.scanHighlighted ? 4 : (_isPressed ? 2.5 : 1.5),
               ),
-              boxShadow: _isPressed
+              boxShadow: lit
                   ? <BoxShadow>[
                       BoxShadow(
                         color: accent.withValues(alpha: 0.30),
