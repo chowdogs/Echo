@@ -139,6 +139,10 @@ class TileState extends ChangeNotifier {
   int _gridColumns = kDefaultGridColumns;
   int _gridRows = kDefaultGridRows;
 
+  /// Whether the account's board has been read from the cloud at least once.
+  /// Until it has, an empty cloud result cannot be trusted to mean "empty".
+  bool _cloudLoaded = false;
+
   /// Loads the board and theme from local storage at startup (instant and
   /// offline-safe). The per-account cloud board is loaded separately by
   /// [loadForUser] once the user signs in.
@@ -187,6 +191,9 @@ class TileState extends ChangeNotifier {
         unawaited(firebase.putBoard(_tiles).catchError((Object _) {}));
       }
       unawaited(_storage.saveTiles(_tiles));
+      // Only now can a later empty read be trusted: the account has been
+      // seen, and seeding (if it was needed) has been dispatched.
+      _cloudLoaded = true;
       notifyListeners();
     } catch (_) {
       // Offline or unreachable — keep whatever is loaded locally.
@@ -320,9 +327,16 @@ class TileState extends ChangeNotifier {
       _applySettings(await firebase.fetchSettings());
 
       final List<CommTile> cloud = await firebase.fetchTiles();
-      // An empty read is ambiguous (a fresh account, a partial response), and
-      // wiping a working board over it would be unrecoverable for the user.
-      if (cloud.isEmpty) return;
+
+      // An empty result is only ambiguous before the first successful load:
+      // until then it could equally mean "this account has no board yet" (and
+      // [loadForUser] is about to seed one) as "the board is empty", and
+      // wiping the on-screen board over that race would be unrecoverable.
+      //
+      // Afterwards it is authoritative. A non-2xx response throws, so an empty
+      // list here came from a genuine success — the guardian really did delete
+      // every tile, and the patient must see that rather than a stale board.
+      if (cloud.isEmpty && !_cloudLoaded) return;
       if (_sameBoard(cloud, _tiles)) return;
 
       _tiles = cloud;
@@ -384,6 +398,8 @@ class TileState extends ChangeNotifier {
   /// local cache so the next account starts clean.
   void resetToDefaults() {
     stopCloudSync();
+    // The next account starts unverified again.
+    _cloudLoaded = false;
     _tiles = List<CommTile>.of(kInitialTiles);
     // The usage history belongs to the account that just signed out, so it is
     // cleared with the board rather than bleeding into the next user's stats.

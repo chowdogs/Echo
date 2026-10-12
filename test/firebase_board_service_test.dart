@@ -95,6 +95,36 @@ void main() {
     expect(path, '/users/user1/log.json');
   });
 
+  // Regression guard. These two nodes are append-only and never pruned, and
+  // the guardian's device re-reads the SOS one every few seconds all day. An
+  // unbounded read therefore gets more expensive every day the app is used,
+  // so the bound is part of the contract, not an optimisation.
+  test('SOS reads ask only for the newest few events', () async {
+    late Uri url;
+    final MockClient client = MockClient((http.Request req) async {
+      url = req.url;
+      return http.Response('null', 200);
+    });
+
+    await authed(client).fetchSos();
+    expect(url.queryParameters['orderBy'], r'"$key"');
+    expect(
+      int.parse(url.queryParameters['limitToLast']!),
+      lessThanOrEqualTo(FirebaseBoardService.sosWindow),
+    );
+  });
+
+  test('usage-log reads are bounded too', () async {
+    late Uri url;
+    final MockClient client = MockClient((http.Request req) async {
+      url = req.url;
+      return http.Response('null', 200);
+    });
+
+    await authed(client).fetchLog();
+    expect(url.queryParameters['limitToLast'], isNotNull);
+  });
+
   test('a non-2xx response throws FirebaseBoardException', () async {
     final MockClient client = MockClient(
       (http.Request req) async => http.Response('denied', 401),

@@ -69,16 +69,45 @@ class FirebaseBoardService {
   void setTarget(String? uid) => _targetUid = uid;
   String? get targetUid => _targetUid;
 
-  Uri _uri(String path) {
+  Uri _uri(String path, [Map<String, String>? query]) {
     final String uid = _targetUid ?? _uid ?? '_';
     // An empty path addresses the account node itself.
     final String suffix = path.isEmpty ? '' : '/$path';
+    final Map<String, String> params = <String, String>{
+      if (_idToken != null) 'auth': _idToken!,
+      ...?query,
+    };
     return Uri.parse('$_baseUrl/users/$uid$suffix.json').replace(
-      queryParameters: _idToken != null
-          ? <String, String>{'auth': _idToken!}
-          : null,
+      queryParameters: params.isEmpty ? null : params,
     );
   }
+
+  /// Asks Firebase for only the newest [count] children of an append-only
+  /// list. Push keys sort chronologically, so ordering by key and taking the
+  /// tail is the cheapest way to get "the most recent ones" — and it needs no
+  /// index declared in the security rules, unlike ordering by a child field.
+  ///
+  /// This matters more than it looks: without a bound, every read of an
+  /// append-only node downloads the entire history, so the cost of each poll
+  /// grows forever as the app is used.
+  static Map<String, String> _newest(int count) => <String, String>{
+    'orderBy': r'"$key"',
+    'limitToLast': '$count',
+  };
+
+  /// How many recent emergencies a guardian's poll needs. It only reports
+  /// events newer than the last one it saw, so a handful is ample — this is a
+  /// window, not a history.
+  static const int sosWindow = 10;
+
+  /// How much usage history the caregiver dashboard pulls.
+  ///
+  /// The dashboard shows the last seven days, so this is deliberately
+  /// generous rather than exact. The honest trade-off: the day-streak figure
+  /// can only count back as far as these records reach, so a very heavy user
+  /// would see a streak that caps out. Bounding the payload is worth that —
+  /// an unbounded read gets slower every day the app is used.
+  static const int logWindow = 1000;
 
   /// READ — GET /tiles.json. Returns every stored tile (empty list if the
   /// database has none yet).
@@ -140,7 +169,9 @@ class FirebaseBoardService {
   /// READ — GET /log.json. Returns the stored usage history, oldest first, so
   /// the caregiver dashboard can show real numbers across devices.
   Future<List<Utterance>> fetchLog() async {
-    final http.Response resp = await _send(() => _client.get(_uri('log')));
+    final http.Response resp = await _send(
+      () => _client.get(_uri('log', _newest(logWindow))),
+    );
     final Object? decoded = jsonDecode(resp.body);
     if (decoded is! Map) return <Utterance>[];
 
@@ -238,7 +269,12 @@ class FirebaseBoardService {
   /// READ — GET /sos.json. The targeted account's emergency history, oldest
   /// first. A guardian polls this to surface new alerts.
   Future<List<SosEvent>> fetchSos() async {
-    final http.Response resp = await _send(() => _client.get(_uri('sos')));
+    // A guardian polls this every few seconds for the lifetime of a shift, and
+    // only ever looks at what arrived since the last check, so asking for the
+    // whole emergency history each time was pure waste that grew with use.
+    final http.Response resp = await _send(
+      () => _client.get(_uri('sos', _newest(sosWindow))),
+    );
     final Object? decoded = jsonDecode(resp.body);
     if (decoded is! Map) return <SosEvent>[];
 
