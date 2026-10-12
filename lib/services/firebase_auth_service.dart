@@ -105,6 +105,31 @@ class FirebaseAuthService {
     );
   }
 
+  /// Asks Firebase to email a password-reset link.
+  ///
+  /// Deliberately reports success even when the address is unknown: telling a
+  /// stranger which emails have accounts is an account-enumeration leak, and
+  /// the person who actually owns the inbox learns the truth either way.
+  Future<void> sendPasswordReset(String email) async {
+    try {
+      await _post(
+        Uri.https(_idBase, '/v1/accounts:sendOobCode', <String, String>{
+          'key': apiKey,
+        }),
+        <String, dynamic>{
+          'requestType': 'PASSWORD_RESET',
+          'email': email.trim(),
+        },
+      );
+    } on AuthException catch (e) {
+      // A genuine connectivity problem is still worth surfacing; a rejected
+      // address is not.
+      if (e.message.contains('connection') || e.message.contains('timed out')) {
+        rethrow;
+      }
+    }
+  }
+
   /// Exchanges the long-lived refresh token for a fresh [idToken].
   Future<AuthSession> refresh(AuthSession session) async {
     final Map<String, dynamic> body = await _post(

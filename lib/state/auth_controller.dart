@@ -117,6 +117,28 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Sends a password-reset email. Returns true once the request has gone
+  /// through — which, by design, is also what an unknown address returns.
+  Future<bool> sendPasswordReset(String email) async {
+    if (!email.contains('@')) {
+      _set(error: 'Enter your email address first.');
+      return false;
+    }
+
+    _set(busy: true, error: null);
+    try {
+      await _auth.sendPasswordReset(email);
+      _set(busy: false);
+      return true;
+    } on AuthException catch (e) {
+      _set(busy: false, error: e.message);
+      return false;
+    } catch (_) {
+      _set(busy: false, error: 'Could not send the reset email.');
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     // Clear the cached Google account too, so the next sign-in shows the
     // account picker rather than silently reusing the last one.

@@ -53,6 +53,23 @@ class _AuthViewState extends State<AuthView> {
     }
   }
 
+  Future<void> _resetPassword() async {
+    final bool sent = await context.read<AuthController>().sendPasswordReset(
+      _email.text,
+    );
+    if (!mounted || !sent) return;
+    setState(() => _validationError = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'If an account exists for ${_email.text.trim()}, a reset link is '
+          'on its way.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _toggleMode() {
     setState(() {
       _isRegister = !_isRegister;
@@ -140,6 +157,26 @@ class _AuthViewState extends State<AuthView> {
                     busy: auth.busy,
                     onTap: auth.busy ? null : _submit,
                   ),
+                  // Only on the log-in side: offering a reset while someone is
+                  // creating an account is just noise.
+                  if (!_isRegister)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: GestureDetector(
+                        onTap: auth.busy ? null : _resetPassword,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            'Forgot password?',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: c.accent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   if (auth.googleAvailable) ...<Widget>[
                     const SizedBox(height: 18),
                     const _OrDivider(),

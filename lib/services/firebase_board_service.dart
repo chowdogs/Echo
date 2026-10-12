@@ -125,6 +125,15 @@ class FirebaseBoardService {
         if (tile != null) tiles.add(tile);
       }
     });
+
+    // A Firebase map has no order — it reads back sorted by key, which is the
+    // tile id, so without this the board silently rearranges itself
+    // alphabetically on every sync. Id breaks ties so the result is stable
+    // (Dart's sort is not) and two devices never disagree about the layout.
+    tiles.sort((CommTile a, CommTile b) {
+      final int byOrder = a.order.compareTo(b.order);
+      return byOrder != 0 ? byOrder : a.id.compareTo(b.id);
+    });
     return tiles;
   }
 

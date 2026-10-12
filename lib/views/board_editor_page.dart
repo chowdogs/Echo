@@ -45,12 +45,30 @@ class BoardEditorPage extends StatelessWidget {
           Expanded(
             child: tiles.isEmpty
                 ? _EmptyState(onAdd: addTile)
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                : ReorderableListView.builder(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 90),
                     itemCount: tiles.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    onReorder: (int oldIndex, int newIndex) => context
+                        .read<TileState>()
+                        .reorderTile(oldIndex, newIndex),
+                    proxyDecorator:
+                        (Widget child, int index, Animation<double> animation) {
+                          // Lift the dragged row rather than tinting it, so it
+                          // stays legible while it moves.
+                          return Material(
+                            color: Colors.transparent,
+                            elevation: 8,
+                            borderRadius: BorderRadius.circular(EchoRadius.md),
+                            shadowColor: c.shadow.withValues(alpha: 0.4),
+                            child: child,
+                          );
+                        },
                     itemBuilder: (BuildContext context, int index) {
-                      return _TileRow(tile: tiles[index]);
+                      return Padding(
+                        key: ValueKey<String>(tiles[index].id),
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _TileRow(tile: tiles[index], index: index),
+                      );
                     },
                   ),
           ),
@@ -73,9 +91,12 @@ class BoardEditorPage extends StatelessWidget {
 }
 
 class _TileRow extends StatelessWidget {
-  const _TileRow({required this.tile});
+  const _TileRow({required this.tile, required this.index});
 
   final CommTile tile;
+
+  /// Position in the list, needed by the drag handle to start a reorder.
+  final int index;
 
   Future<void> _edit(BuildContext context) async {
     final TileDraft? draft = await showTileEditor(context, existing: tile);
@@ -181,7 +202,19 @@ class _TileRow extends StatelessWidget {
               icon: Icon(Icons.delete_outline_rounded, color: c.muted),
               tooltip: 'Remove ${tile.label}',
             ),
-            Icon(Icons.chevron_right_rounded, color: c.muted),
+            // An explicit handle rather than long-press-anywhere: the row is
+            // also tappable to edit, and a caregiver should not trigger a drag
+            // by hesitating over it.
+            ReorderableDragStartListener(
+              index: index,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 12,
+                ),
+                child: Icon(Icons.drag_handle_rounded, color: c.muted),
+              ),
+            ),
           ],
         ),
       ),

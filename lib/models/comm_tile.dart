@@ -13,9 +13,19 @@ class CommTile {
     required this.icon,
     required this.colorTheme,
     this.imageUrl,
+    this.order = 0,
   });
 
   final String id;
+
+  /// Position on the board.
+  ///
+  /// This has to be stored, not inferred. Tiles live in Firebase as a map
+  /// keyed by id, and a map has no order — reading one back yields the keys
+  /// sorted alphabetically, which silently rearranged a board that was
+  /// arranged on purpose. AAC users navigate by remembered tile position, so
+  /// a board that reshuffles itself on sync is worse than useless.
+  final int order;
 
   /// Short text shown on the tile face.
   final String label;
@@ -46,6 +56,7 @@ class CommTile {
     IconData? icon,
     String? colorTheme,
     Object? imageUrl = keep,
+    int? order,
   }) {
     return CommTile(
       id: id,
@@ -54,6 +65,7 @@ class CommTile {
       icon: icon ?? this.icon,
       colorTheme: colorTheme ?? this.colorTheme,
       imageUrl: identical(imageUrl, keep) ? this.imageUrl : imageUrl as String?,
+      order: order ?? this.order,
     );
   }
 
@@ -68,6 +80,7 @@ class CommTile {
     'iconFontFamily': icon.fontFamily,
     'colorTheme': colorTheme,
     'imageUrl': imageUrl,
+    'order': order,
   };
 
   /// Rebuilds a tile from stored JSON. Returns null if a required field is
@@ -96,6 +109,10 @@ class CommTile {
       ),
       colorTheme: colorTheme,
       imageUrl: json['imageUrl'] as String?,
+      // Boards written before ordering existed have no value here; they fall
+      // back to 0 and keep whatever relative order the read produced, rather
+      // than being rejected.
+      order: json['order'] is int ? json['order'] as int : 0,
     );
   }
 }

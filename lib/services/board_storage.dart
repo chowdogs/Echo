@@ -19,6 +19,7 @@ class BoardStorage {
   static const String _sessionKey = 'echo.auth.session.v1';
   static const String _gridKey = 'echo.board.grid.v1';
   static const String _scanKey = 'echo.board.scanning.v1';
+  static const String _pendingKey = 'echo.board.pendingPush.v1';
   static const String _logKey = 'echo.board.log.v1';
 
   /// Most recent utterances kept on device. Enough for the caregiver
@@ -116,6 +117,29 @@ class BoardStorage {
       return (columns: columns, rows: rows);
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Records that the board holds edits the server has not accepted yet.
+  ///
+  /// Persisted rather than held in memory because the common case is the app
+  /// being closed while offline — losing the flag would lose the fact that
+  /// the device and the account disagree.
+  Future<void> savePendingPush(bool pending) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_pendingKey, pending);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<bool> loadPendingPush() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_pendingKey) ?? false;
+    } catch (_) {
+      return false;
     }
   }
 

@@ -22,6 +22,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I am hungry.',
     icon: Icons.restaurant_rounded,
     colorTheme: 'amber',
+    order: 0,
   ),
   CommTile(
     id: 'thirsty',
@@ -29,6 +30,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I am thirsty.',
     icon: Icons.local_cafe_rounded,
     colorTheme: 'sky',
+    order: 1,
   ),
   CommTile(
     id: 'pain',
@@ -36,6 +38,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I am in pain.',
     icon: Icons.healing_rounded,
     colorTheme: 'rose',
+    order: 2,
   ),
   CommTile(
     id: 'restroom',
@@ -43,6 +46,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I need to use the restroom.',
     icon: Icons.wc_rounded,
     colorTheme: 'violet',
+    order: 3,
   ),
   CommTile(
     id: 'yes',
@@ -50,6 +54,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'Yes.',
     icon: Icons.check_rounded,
     colorTheme: 'emerald',
+    order: 4,
   ),
   CommTile(
     id: 'no',
@@ -57,6 +62,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'No.',
     icon: Icons.close_rounded,
     colorTheme: 'slate',
+    order: 5,
   ),
   CommTile(
     id: 'help',
@@ -64,6 +70,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I need help, please.',
     icon: Icons.support_rounded,
     colorTheme: 'orange',
+    order: 6,
   ),
   CommTile(
     id: 'play',
@@ -71,6 +78,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I would like to do an activity.',
     icon: Icons.interests_rounded,
     colorTheme: 'teal',
+    order: 7,
   ),
   CommTile(
     id: 'sleep',
@@ -78,6 +86,7 @@ const List<CommTile> kInitialTiles = <CommTile>[
     ttsPhrase: 'I am tired. I would like to rest.',
     icon: Icons.bedtime_rounded,
     colorTheme: 'indigo',
+    order: 8,
   ),
 ];
 
@@ -168,6 +177,7 @@ class TileState extends ChangeNotifier {
     final bool? dark = await _storage.loadDarkMode();
     final ({int columns, int rows})? grid = await _storage.loadGrid();
     final ({bool enabled, int seconds})? scan = await _storage.loadScanning();
+    _pendingPush = await _storage.loadPendingPush();
     final List<Utterance>? log = await _storage.loadUtterances();
 
     var changed = false;
@@ -346,6 +356,11 @@ class TileState extends ChangeNotifier {
     }
 
     try {
+      // Anything written while offline goes up before anything comes down —
+      // reading first would overwrite those edits with a board that predates
+      // them, silently discarding the user's work.
+      if (!await _flushPending(firebase)) return;
+
       // Layout and theme first: a controller may have changed only those.
       _applySettings(await firebase.fetchSettings());
 
@@ -436,8 +451,11 @@ class TileState extends ChangeNotifier {
   /// local cache so the next account starts clean.
   void resetToDefaults() {
     stopCloudSync();
-    // The next account starts unverified again.
+    // The next account starts unverified again, and inherits no unsent
+    // edits from the one that just signed out.
     _cloudLoaded = false;
+    _pendingPush = false;
+    unawaited(_storage.savePendingPush(false));
     _tiles = List<CommTile>.of(kInitialTiles);
     // The usage history belongs to the account that just signed out, so it is
     // cleared with the board rather than bleeding into the next user's stats.
@@ -455,11 +473,42 @@ class TileState extends ChangeNotifier {
     unawaited(_storage.saveTiles(_tiles));
   }
 
-  /// Runs a cloud write in the background, swallowing errors so a failed sync
-  /// never breaks the UI (the change is already saved locally).
+  /// True when the board holds edits the server has not accepted.
+  bool _pendingPush = false;
+
+  /// Runs a cloud write in the background. A failure never breaks the UI — the
+  /// change is already saved locally — but it is no longer simply discarded:
+  /// the board is flagged so the whole thing is re-pushed once the server is
+  /// reachable again. Without that, an edit made offline survived on the
+  /// device but never reached the account, so a guardian looking at the same
+  /// board saw something different and neither side knew.
   void _cloud(Future<void>? Function() op) {
     final Future<void>? future = op();
-    if (future != null) unawaited(future.catchError((Object _) {}));
+    if (future == null) return;
+    unawaited(
+      future.catchError((Object _) {
+        _pendingPush = true;
+        unawaited(_storage.savePendingPush(true));
+      }),
+    );
+  }
+
+  /// Sends the local board up wholesale to settle an earlier failed write.
+  ///
+  /// The whole board rather than a replay of individual operations: the local
+  /// copy is already the complete intended state, so one idempotent write
+  /// converges without needing an operation log that could apply out of order.
+  /// Returns false when the server is still unreachable.
+  Future<bool> _flushPending(FirebaseBoardService firebase) async {
+    if (!_pendingPush) return true;
+    try {
+      await firebase.putBoard(_tiles);
+      _pendingPush = false;
+      unawaited(_storage.savePendingPush(false));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   List<CommTile> get tiles => List<CommTile>.unmodifiable(_tiles);
@@ -606,6 +655,9 @@ class TileState extends ChangeNotifier {
       icon: icon,
       colorTheme: colorTheme,
       imageUrl: imageUrl,
+      // Appended to the end, so adding a tile never moves the ones a user has
+      // already learned the position of.
+      order: _tiles.length,
     );
     _tiles = <CommTile>[..._tiles, tile];
     _persist();
@@ -644,6 +696,35 @@ class TileState extends ChangeNotifier {
         _cloud(() => _firebase?.patchTile(t));
         break;
       }
+    }
+    notifyListeners();
+  }
+
+  /// Moves the tile at [oldIndex] to [newIndex].
+  ///
+  /// Every tile is renumbered and re-synced, not just the two that moved:
+  /// order is absolute, so a gap or a duplicate would let two devices disagree
+  /// about the layout — and on a board navigated by muscle memory, that is the
+  /// expensive kind of wrong.
+  void reorderTile(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _tiles.length) return;
+    // ReorderableListView reports the target index as if the dragged item were
+    // still in place, so moving down needs one subtracted.
+    var target = newIndex;
+    if (target > oldIndex) target -= 1;
+    target = target.clamp(0, _tiles.length - 1);
+    if (target == oldIndex) return;
+
+    final List<CommTile> next = List<CommTile>.of(_tiles);
+    next.insert(target, next.removeAt(oldIndex));
+
+    _tiles = <CommTile>[
+      for (final (int index, CommTile tile) in next.indexed)
+        tile.copyWith(order: index),
+    ];
+    _persist();
+    for (final CommTile tile in _tiles) {
+      _cloud(() => _firebase?.patchTile(tile));
     }
     notifyListeners();
   }

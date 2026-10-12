@@ -4,6 +4,7 @@ import 'package:echo/state/tile_state.dart';
 import 'package:echo/widgets/tile_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Pumps the app and taps through the landing screen into the main shell,
 /// leaving the Speak view active. Most widget tests start from here.
@@ -17,6 +18,15 @@ Future<void> pumpToShell(WidgetTester tester) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Without a backing store, every TileState load/save throws
+  // MissingPluginException from a future nobody is awaiting by the time the
+  // test ends, which surfaced as intermittent unrelated failures. Giving the
+  // tests a real in-memory store removes the flake and exercises the actual
+  // persistence path rather than its error branch.
+  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+
   group('TileState', () {
     test('speak records an utterance for the tapped tile', () {
       final TileState state = TileState();
@@ -89,6 +99,74 @@ void main() {
 
       expect(state.tiles.length, before - 1);
       expect(state.tiles.any((t) => t.id == id), isFalse);
+    });
+
+    test('the starter board keeps its deliberate order, not alphabetical', () {
+      // Urgent needs first, yes/no adjacent. A board that reshuffles itself
+      // breaks the muscle memory AAC users navigate by.
+      expect(
+        kInitialTiles.map((CommTile t) => t.id).take(3).toList(),
+        <String>['hungry', 'thirsty', 'pain'],
+      );
+      // Position is stored, so it can survive a round trip through a
+      // Firebase map (which has no order of its own).
+      for (final (int index, CommTile tile) in kInitialTiles.indexed) {
+        expect(tile.order, index);
+      }
+    });
+
+    test('reorderTile moves a tile and renumbers every position', () {
+      final TileState state = TileState();
+      final String moved = state.tiles[4].id;
+
+      state.reorderTile(4, 0);
+
+      expect(state.tiles.first.id, moved);
+      // No gaps or duplicates: order is absolute, so a hole would let two
+      // devices disagree about the layout.
+      for (final (int index, CommTile tile) in state.tiles.indexed) {
+        expect(tile.order, index);
+      }
+    });
+
+    test('reorderTile accounts for the drag index offset', () {
+      final TileState state = TileState();
+      final String first = state.tiles.first.id;
+      final String second = state.tiles[1].id;
+
+      // ReorderableListView reports the target as if the dragged row were
+      // still in place, so dragging item 0 down by one arrives as (0, 2).
+      state.reorderTile(0, 2);
+
+      expect(state.tiles.first.id, second);
+      expect(state.tiles[1].id, first);
+    });
+
+    test('reorderTile ignores a no-op or an out-of-range move', () {
+      final TileState state = TileState();
+      final List<String> before =
+          state.tiles.map((CommTile t) => t.id).toList();
+
+      state.reorderTile(0, 0);
+      state.reorderTile(99, 0);
+      state.reorderTile(-1, 2);
+
+      expect(state.tiles.map((CommTile t) => t.id).toList(), before);
+    });
+
+    test('a new tile is appended, never inserted among learned ones', () {
+      final TileState state = TileState();
+      final int before = state.tiles.length;
+
+      final CommTile added = state.addTile(
+        label: 'Water',
+        ttsPhrase: 'I would like some water.',
+        icon: Icons.local_drink_rounded,
+        colorTheme: 'sky',
+      );
+
+      expect(state.tiles.last.id, added.id);
+      expect(added.order, before);
     });
 
     test('switch scanning is off until it is turned on', () {
