@@ -80,7 +80,9 @@ class LandingView extends StatelessWidget {
                               _StartButton(onStart: onStart),
                               const SizedBox(height: 16),
                               Text(
-                                'Works offline · No account needed',
+                                // Was "No account needed", which stopped
+                                // being true once sign-in gated the app.
+                                'Works offline · Your board follows you',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 12.5,
@@ -171,20 +173,26 @@ class _Feature extends StatelessWidget {
     return Column(
       children: <Widget>[
         Container(
-          width: 52,
-          height: 52,
+          width: 56,
+          height: 56,
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: c.border),
+            borderRadius: BorderRadius.circular(EchoRadius.md),
+            border: Border.all(color: c.border.withValues(alpha: 0.7)),
+            boxShadow: c.elevation(0.7),
           ),
-          child: Icon(icon, color: c.accent, size: 24),
+          child: Icon(icon, color: c.accent, size: 25),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 11),
         Text(
           label,
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12.5, height: 1.3, color: c.muted),
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.3,
+            fontWeight: FontWeight.w600,
+            color: c.muted,
+          ),
         ),
       ],
     );

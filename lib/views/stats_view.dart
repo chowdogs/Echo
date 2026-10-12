@@ -115,8 +115,9 @@ class _Card extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: c.border),
+        borderRadius: BorderRadius.circular(EchoRadius.lg),
+        border: Border.all(color: c.border.withValues(alpha: 0.7)),
+        boxShadow: c.elevation(0.75),
       ),
       child: child,
     );

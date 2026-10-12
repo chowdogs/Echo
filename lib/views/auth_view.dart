@@ -229,8 +229,9 @@ class _GoogleButton extends StatelessWidget {
           height: 54,
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(EchoRadius.md),
             border: Border.all(color: c.border, width: 1.5),
+            boxShadow: c.elevation(0.6),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -313,15 +314,15 @@ class _Field extends StatelessWidget {
         fillColor: colors.surface,
         contentPadding: const EdgeInsets.symmetric(vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(EchoRadius.md),
           borderSide: BorderSide(color: colors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(EchoRadius.md),
           borderSide: BorderSide(color: colors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(EchoRadius.md),
           borderSide: BorderSide(color: colors.accent, width: 1.6),
         ),
       ),
@@ -349,7 +350,7 @@ class _PrimaryButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: kBrandGradient,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(EchoRadius.md),
           boxShadow: <BoxShadow>[
             BoxShadow(
               color: const Color(0xFF38BDF8).withValues(alpha: 0.35),

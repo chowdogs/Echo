@@ -66,6 +66,16 @@ class ControllerState extends ChangeNotifier {
   /// In-app alerts are the whole delivery mechanism, so this is how long an
   /// emergency can go unseen. Ten seconds is responsive without thrashing the
   /// battery of a phone sitting in a carer's pocket all day.
+  ///
+  /// KNOWN LIMITATION — alerts only arrive while Echo is open on the
+  /// guardian's device. Reaching a closed app needs a push message, and
+  /// sending one requires a service-account key that cannot safely live in a
+  /// client; that means a server (a Firebase Cloud Function, which requires
+  /// the paid Blaze plan). Background polling was rejected instead of adopted:
+  /// the platforms cap it at roughly fifteen minutes, which would look like
+  /// push while being far too slow for an emergency — worse than being honest
+  /// about the limit. The controller console states this plainly to the
+  /// guardian rather than letting them assume cover they do not have.
   static const Duration sosPollInterval = Duration(seconds: 10);
 
   // --- The patient's board, layout and history ------------------------------

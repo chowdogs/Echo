@@ -589,6 +589,44 @@ class _SetupTab extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
+        // Stated plainly rather than buried in a manual. A guardian who
+        // believes they will be woken by an alert that cannot arrive is worse
+        // off than one who knows to keep the app open.
+        SettingsGroup(
+          title: 'Emergency alerts',
+          children: <Widget>[
+            SettingsInfoRow(
+              icon: Icons.notifications_active_rounded,
+              label: 'You are alerted',
+              value: 'While Echo is open',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(Icons.info_outline_rounded, size: 16, color: c.muted),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Echo sounds an alarm and shows a banner while it is open on '
+                  'this device. It cannot reach you when the app is closed or '
+                  'the phone is locked, so keep Echo open while you are '
+                  'on duty.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: c.muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         SettingsGroup(
           title: 'Connection',
           children: <Widget>[
