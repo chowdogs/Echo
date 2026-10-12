@@ -164,7 +164,7 @@ class _TileEditorSheetState extends State<_TileEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
-    final Color accent = tileAccentFor(_colorTheme);
+    final Color accent = tileAccentOf(context, _colorTheme);
 
     return Padding(
       // Lift the sheet above the keyboard when a field is focused.
@@ -698,7 +698,7 @@ class _ColorPicker extends StatelessWidget {
       spacing: 12,
       runSpacing: 12,
       children: kTileColorChoices.map((String key) {
-        final Color color = tileAccentFor(key);
+        final Color color = tileAccentOf(context, key);
         final bool isSelected = key == selected;
         return GestureDetector(
           onTap: () => onSelected(key),

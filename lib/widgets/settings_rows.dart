@@ -25,13 +25,13 @@ class SettingsGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          padding: const EdgeInsets.only(left: 6, bottom: 9),
           child: Text(
             title.toUpperCase(),
             style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
               color: c.muted,
             ),
           ),
@@ -39,8 +39,11 @@ class SettingsGroup extends StatelessWidget {
         Container(
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: c.border),
+            borderRadius: BorderRadius.circular(EchoRadius.lg),
+            // Shadow does the separating; the border is only a hairline to
+            // keep the edge crisp on a light canvas.
+            border: Border.all(color: c.border.withValues(alpha: 0.7)),
+            boxShadow: c.elevation(0.75),
           ),
           child: Column(children: children),
         ),
@@ -79,8 +82,8 @@ class SettingsRowIcon extends StatelessWidget {
       width: 38,
       height: 38,
       decoration: BoxDecoration(
-        color: tint == null ? c.surfaceHigh : color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(11),
+        color: color.withValues(alpha: c.isDark ? 0.20 : 0.12),
+        borderRadius: BorderRadius.circular(EchoRadius.sm),
       ),
       child: Icon(icon, size: 20, color: color),
     );

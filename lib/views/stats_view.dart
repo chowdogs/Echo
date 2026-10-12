@@ -187,7 +187,7 @@ class _MostUsedCard extends StatelessWidget {
     final EchoColors c = EchoColors.of(context);
     final Color accent = tile == null
         ? c.muted
-        : tileAccentFor(tile!.colorTheme);
+        : tileAccentOf(context, tile!.colorTheme);
 
     return _Card(
       child: Column(

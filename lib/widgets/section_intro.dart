@@ -23,14 +23,17 @@ class SectionIntro extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.6,
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.0,
             color: c.text,
           ),
         ),
         const SizedBox(height: 4),
-        Text(subtitle, style: TextStyle(fontSize: 14, color: c.muted)),
+        Text(
+          subtitle,
+          style: TextStyle(fontSize: 14.5, height: 1.35, color: c.muted),
+        ),
       ],
     );
   }

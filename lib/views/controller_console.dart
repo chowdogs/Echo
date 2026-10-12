@@ -311,7 +311,7 @@ class _RemoteTileRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final EchoColors c = EchoColors.of(context);
-    final Color accent = tileAccentFor(tile.colorTheme);
+    final Color accent = tileAccentOf(context, tile.colorTheme);
 
     return GestureDetector(
       onTap: () => _edit(context),

@@ -16,10 +16,7 @@ class SubPageHeader extends StatelessWidget {
     final EchoColors c = EchoColors.of(context);
 
     return Container(
-      decoration: BoxDecoration(
-        color: c.background,
-        border: Border(bottom: BorderSide(color: c.border)),
-      ),
+      decoration: BoxDecoration(color: c.background),
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -39,9 +36,9 @@ class SubPageHeader extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.4,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.6,
                       ),
                     ),
                     if (subtitle != null)

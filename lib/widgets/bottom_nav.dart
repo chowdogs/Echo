@@ -6,15 +6,19 @@ import '../theme/app_theme.dart';
 
 /// Persistent bottom navigation.
 ///
-/// Layout mirrors the requested order — Speak on the far left, Emergency
-/// raised in the dead centre, and Stats then Settings on the right with
-/// Settings anchored rightmost. Equal [Expanded] flanks keep the emergency
-/// button truly centred regardless of how many items sit on each side, and
-/// every label lives in a [FittedBox] so nothing overflows on a small phone.
+/// Speak on the left, Settings on the right, and Emergency raised in the dead
+/// centre. Equal [Expanded] flanks keep the emergency button truly centred,
+/// and every label lives in a [FittedBox] so nothing overflows on a small
+/// phone.
+///
+/// The active destination now gets a filled pill behind it rather than only a
+/// colour change: colour alone is a weak signal for a user with a colour
+/// vision deficiency, and this board is navigated by people who cannot afford
+/// to guess where they are.
 class BottomNav extends StatelessWidget {
   const BottomNav({super.key});
 
-  static const double _barHeight = 64;
+  static const double _barHeight = 66;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +33,13 @@ class BottomNav extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: c.surface,
-        border: Border(top: BorderSide(color: c.border)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: c.shadow.withValues(alpha: c.isDark ? 0.4 : 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
+          ),
+        ],
       ),
       child: SafeArea(
         top: false,
@@ -37,7 +47,6 @@ class BottomNav extends StatelessWidget {
           height: _barHeight,
           child: Row(
             children: <Widget>[
-              // Left flank: Speak.
               Expanded(
                 child: _NavItem(
                   icon: Icons.record_voice_over_rounded,
@@ -46,13 +55,11 @@ class BottomNav extends StatelessWidget {
                   onTap: () => go(EchoTab.speak),
                 ),
               ),
-              // Centre: the raised SOS button.
               _EmergencyButton(
                 barHeight: _barHeight,
                 isActive: active == EchoTab.emergency,
                 onTap: () => go(EchoTab.emergency),
               ),
-              // Right flank: Settings.
               Expanded(
                 child: _NavItem(
                   icon: Icons.settings_rounded,
@@ -95,22 +102,34 @@ class _NavItem extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 23, color: color),
-              const SizedBox(height: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? c.accent.withValues(alpha: c.isDark ? 0.20 : 0.12)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Icon(icon, size: 22, color: color),
+              ),
+              const SizedBox(height: 3),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   label,
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                    letterSpacing: 0.1,
                     color: color,
                   ),
                 ),
@@ -127,8 +146,7 @@ class _NavItem extends StatelessWidget {
 /// element in the app, so it stays unmistakable.
 ///
 /// A [Stack] with `Clip.none` lets the circle rise above the bar without
-/// inflating the row height (which would otherwise overflow), giving the
-/// familiar docked-action look.
+/// inflating the row height, giving the familiar docked-action look.
 class _EmergencyButton extends StatelessWidget {
   const _EmergencyButton({
     required this.barHeight,
@@ -140,7 +158,7 @@ class _EmergencyButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  static const double _diameter = 54;
+  static const double _diameter = 58;
 
   @override
   Widget build(BuildContext context) {
@@ -155,15 +173,16 @@ class _EmergencyButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
-          width: 76,
+          width: 82,
           height: barHeight,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.center,
             children: <Widget>[
               Positioned(
-                top: -16,
-                child: Container(
+                top: -18,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
                   width: _diameter,
                   height: _diameter,
                   decoration: BoxDecoration(
@@ -174,27 +193,29 @@ class _EmergencyButton extends StatelessWidget {
                     border: Border.all(color: c.surface, width: 4),
                     boxShadow: <BoxShadow>[
                       BoxShadow(
-                        color: c.danger.withValues(alpha: isActive ? 0.6 : 0.4),
-                        blurRadius: isActive ? 22 : 14,
-                        offset: const Offset(0, 6),
+                        color: c.danger.withValues(
+                          alpha: isActive ? 0.58 : 0.34,
+                        ),
+                        blurRadius: isActive ? 24 : 16,
+                        offset: const Offset(0, 7),
                       ),
                     ],
                   ),
                   child: const Icon(
                     Icons.sos_rounded,
-                    size: 26,
+                    size: 27,
                     color: Colors.white,
                   ),
                 ),
               ),
               Positioned(
-                bottom: 7,
+                bottom: 8,
                 child: Text(
                   'Emergency',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
+                    letterSpacing: 0.1,
                     color: isActive ? c.danger : c.muted,
                   ),
                 ),
